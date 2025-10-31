@@ -1,0 +1,45 @@
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - '6379:6379'
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+    command: "ollama start"  # Usando 'start' como ejemplo de comando
+    environment:
+      - OLLAMA_MODEL=gemma  # Definir el modelo por defecto
+    networks:
+      - app-network
+
+  nest-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nest-app
+    ports:
+      - '3000:3000'
+    depends_on:
+      - redis
+      - ollama
+    volumes:
+      - .:/usr/src/app
+    env_file:
+      - .env
+    command: npm run start:dev
+    networks:
+      - app-network
+
+volumes:
+  ollama:
+
+networks:
+  app-network:
+    driver: bridge
