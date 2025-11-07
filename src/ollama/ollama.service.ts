@@ -18,6 +18,13 @@ const supabase = createClient<Database>(
   process.env.SUPABASE_KEY!,
 );
 
+const REGEX_UNI =
+  /(universidad\s+[a-záéíóúñ\s]+|ucv|upn|upc|unmsm|unsa|utp|usmp|unfv|cayetano|tecsup|senati|isil)/i;
+
+// ✅ REGEX de carreras
+const REGEX_CARRERA =
+  /(carrera|estudio|estoy en|soy de|estudio en)\s+(de\s+)?([a-záéíóúñ\s]+)/i;
+
 @Injectable()
 export class OllamaService {
   private readonly systemPrompt = `
@@ -91,12 +98,16 @@ Ejemplo de comportamiento correcto:
 ✅ Correcto: "Podemos ayudarte con el diseño metodológico completo de tu investigación y asignarte un asesor especializado en Psicología."
 
 Al finalizar tus respuestas, invita siempre a avanzar con una acción:
-- Ofrece agendar una reunión breve por Meet.
+- Ofrece una reunión breve por Meet, pero aclarando que el enlace lo envía directamente la asesora por WhatsApp. Nunca pidas correo..
 - O menciona que puedes mostrar las opciones de inversión según el caso.
 Tu meta es convertir cada conversación en una oportunidad para agendar o presentar opciones de servicio.
 `;
 
   constructor(private readonly elevenlabsService: ElevenlabsService) {}
+
+  private delay(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 
   private extraerDatosCliente(historial: { role: string; content: string }[]) {
     const cliente: {
@@ -110,44 +121,46 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
 
     for (const mensaje of historial) {
       if (mensaje.role !== 'user') continue;
+
       const texto = mensaje.content.toLowerCase();
 
-      if (!cliente.universidad && /universidad\s+[\w\s]+/.test(texto)) {
-        cliente.universidad = texto
-          .match(/universidad\s+([\w\s]+)/)?.[1]
-          .trim();
+      // ✅ UNIVERSIDAD robusta
+      if (!cliente.universidad) {
+        const matchU = texto.match(REGEX_UNI);
+        if (matchU) cliente.universidad = matchU[0].trim();
       }
 
-      if (!cliente.carrera && /carrera\s+[\w\s]+/.test(texto)) {
-        cliente.carrera = texto.match(/carrera\s+([\w\s]+)/)?.[1].trim();
+      // ✅ CARRERA robusta
+      if (!cliente.carrera) {
+        const matchC = texto.match(REGEX_CARRERA);
+        if (matchC) cliente.carrera = matchC[3]?.trim();
       }
 
+      // ✅ Fuente
       if (
         !cliente.fuente &&
-        /(empresa|institución|organización|fuente|lugar de estudio)/.test(texto)
+        /(empresa|institución|organización|fuente|clínica|hospital)/.test(texto)
       ) {
-        cliente.fuente = 'sí'; // simple flag, podrías hacer más específico
+        cliente.fuente = 'sí';
       }
 
-      if (
-        !cliente.avance &&
-        /(desde cero|empezando|ya tengo un avance|parcial)/.test(texto)
-      ) {
-        cliente.avance =
-          texto.includes('desde cero') || texto.includes('empezando')
-            ? 'inicial'
-            : 'parcial';
+      // ✅ Avance
+      if (!cliente.avance) {
+        if (/desde cero|empezando/.test(texto)) cliente.avance = 'inicial';
+        else if (/avance|parcial/.test(texto)) cliente.avance = 'parcial';
       }
 
-      if (
-        !cliente.fechaEntrega &&
-        /(entregar|entrega|fecha).*?(\d{1,2}\/\d{1,2}|\d{4})/.test(texto)
-      ) {
-        cliente.fechaEntrega = texto.match(/(\d{1,2}\/\d{1,2}|\d{4})/)?.[1];
+      // ✅ Fecha entrega
+      if (!cliente.fechaEntrega) {
+        const dateMatch = texto.match(/(\d{1,2}\/\d{1,2}|\d{4})/);
+        if (dateMatch) cliente.fechaEntrega = dateMatch[1];
       }
 
-      if (!cliente.formaPago && /(pago|grupo|individual)/.test(texto)) {
-        cliente.formaPago = texto.includes('grupo') ? 'grupo' : 'individual';
+      // ✅ Forma de pago
+      if (!cliente.formaPago) {
+        if (/grupo/.test(texto)) cliente.formaPago = 'grupo';
+        else if (/pago|individual/.test(texto))
+          cliente.formaPago = 'individual';
       }
     }
 
@@ -274,6 +287,12 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
 
       const datosCliente = this.extraerDatosCliente(historial ?? []);
       let resumenEstado = '';
+      const isCalificado =
+        datosCliente.universidad &&
+        datosCliente.carrera &&
+        datosCliente.avance &&
+        datosCliente.fechaEntrega &&
+        datosCliente.formaPago;
 
       if (datosCliente.universidad)
         resumenEstado += `Ya indicó que la universidad es ${datosCliente.universidad}. `;
@@ -287,6 +306,17 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
         resumenEstado += `La fecha aproximada de entrega es ${datosCliente.fechaEntrega}. `;
       if (datosCliente.formaPago)
         resumenEstado += `Indicó que el pago será ${datosCliente.formaPago}. `;
+      if (/precio|costo|cuánto/i.test(normalized) && !isCalificado) {
+        return {
+          content:
+            'Claro, puedo orientarte con la inversión, pero primero necesito entender un poquito tu proyecto para darte una opción adecuada. ¿Para qué universidad y carrera es tu tesis o trabajo?',
+          registro: {
+            tipo: 'prospectar-antes-de-precio',
+            fecha: Date.now(),
+            prompt,
+          },
+        };
+      }
 
       if (resumenEstado) {
         mensajesPrevios.unshift({
@@ -323,6 +353,10 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
       const limpio = this.limpiarRespuesta(
         completion.choices[0]?.message?.content || '',
       );
+
+      if (limpio.length > 180) {
+        await this.delay(1200);
+      }
 
       // 💾 Guardar conversación
       const embeddingAsistente = await this.generarEmbedding(limpio);

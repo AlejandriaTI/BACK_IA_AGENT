@@ -29,18 +29,18 @@ export class ElevenlabsService {
     }
   }
 
-  // ✅ TEXT → SPEECH
+  // ✅ TEXT → SPEECH con SSML (MUCHO más rápido)
   async textToSpeech(text: string): Promise<Buffer> {
     const url = `${this.apiUrl}/text-to-speech/${this.voiceId}`;
 
     const body = {
-      text,
+      text: `<prosody rate="330%">${text}</prosody>`,
       model_id: 'eleven_multilingual_v2',
       voice_settings: {
-        stability: 0.5,
+        stability: 0.4,
         similarity_boost: 0.7,
       },
-      audio_speed: 1.25, // ✅ AUMENTAR VELOCIDAD
+      audio_speed: 3.0,
     };
 
     const response = await axios.post(url, body, {
