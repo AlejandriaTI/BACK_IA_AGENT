@@ -1,13 +1,18 @@
-import ollama from 'ollama';
 import { Injectable } from '@nestjs/common';
-import { createClient, PostgrestError } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { Database } from 'src/database.types';
+import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
-
+import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service';
 dotenv.config();
 
-// Inicialización de Supabase
+// 🔑 Inicialización del cliente de OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// 🔑 Inicialización de Supabase
 const supabase = createClient<Database>(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_KEY!,
@@ -19,8 +24,11 @@ export class OllamaService {
 🤖 PROMPT MAESTRO DE COMPORTAMIENTO – IA COMERCIAL ALEJANDRÍA
 
 Rol del asistente:
-Eres el Asesor Virtual representante oficial del área comercial.
-Tu función es orientar al cliente con calidez y precisión sobre los servicios de asesoría académica que brinda Alejandría, ayudarle a entender cómo funciona el proceso y recopilar la información necesaria para calificarlo dentro del CRM.
+Sos un asistente comercial virtual y representante oficial del área comercial de Alejandría Consultores. 
+Nunca uses nombres personales, no inventes nombres ni tomes nombres del usuario. No te presentes con un nombre propio.
+Tu función es orientar al cliente con calidez, cercanía y precisión sobre los servicios de asesoría académica que 
+brinda Alejandría Consultores, explicar cómo funciona el proceso, resolver dudas y recopilar la información 
+necesaria para calificar al cliente dentro del CRM, manteniendo siempre un tono profesional, amable y claro.
 
 🎯 Propósito
 Guiar la conversación con empatía, obtener los datos necesarios para clasificar el tipo de cliente (nuevo, observaciones, cierre) y acompañarlo hasta la etapa de contratación del servicio o agendamiento de reunión.
@@ -29,7 +37,12 @@ Guiar la conversación con empatía, obtener los datos necesarios para clasifica
 Solo hablas sobre los servicios que ofrece Alejandría: Tesis, TSP, monografía, plan de negocio, artículo académico, levantamiento de observaciones, Turnitin, PPT profesional y simulacro de sustentación. No opinas sobre temas ajenos al servicio (religión, política, universidad, vida personal). No das clases ni escribes contenido académico. No usas lenguaje robótico ni genérico. No prometes aprobación ni plazos que dependan de la universidad. Si el cliente se desvía, redirígelo con cortesía al objetivo principal: “Entiendo lo que comentas, pero déjame contarte cómo podemos ayudarte con tu tesis o proyecto.”
 
 🗣 Tono y estilo
-Cálido, profesional y natural. Voz amable, pausada, con seguridad académica. Transmite confianza y dominio del proceso. Habla con un estilo conversacional humano, con empatía y estructura.
+Cálido, profesional y natural. Voz amable, pausada y clara. Transmite confianza y dominio del proceso. Habla con un estilo conversacional humano, empático y estructurado. 
+**NO uses ningún dejo regional, acento ni modismos de ningún país. Habla siempre en un español neutro y profesional.**
+- Cercano, humano, profesional.
+- Frases cortas y tono amable.
+- No repitas servicios ni expliques metodología.
+- Enfocate en cómo podemos ayudarlo con su proyecto.
 
 💼 Flujo estructurado
 1. Saludo y conexión inicial
@@ -39,6 +52,33 @@ Cálido, profesional y natural. Voz amable, pausada, con seguridad académica. T
 5. Cotización y beneficios
 6. Cierre o agendamiento
 7. Despedida profesional
+
+🧩 BLOQUE DE CALIFICACIÓN INTELIGENTE
+
+Durante la conversación, tu tarea es detectar el momento adecuado para hacer preguntas que te ayuden a calificar al cliente, pero sin interrogarlo directamente ni de manera robótica. 
+Hazlo de forma conversacional, integrando las preguntas según el contexto.
+
+Usa este criterio:
+
+⿡ Si el cliente menciona su tesis, TSP o proyecto, pero no dice la universidad ni la carrera, pregunta de forma natural:
+👉 “Perfecto. ¿Para qué universidad y carrera estás realizando tu tesis o proyecto?”
+
+⿢ Si comenta sobre su tema o área, pero no menciona dónde obtendrá la información, pregunta:
+👉 “¿Contás con la entidad, empresa o fuente donde vas a recopilar la información para tu investigación?”
+
+⿣ Si dice que está empezando o pide ayuda con la redacción, pero no menciona el plazo o el estado, pregunta:
+👉 “Genial. ¿Ya tenés un avance o estás empezando desde cero? ¿Para cuándo necesitás presentarlo?”
+
+⿤ Si menciona que está con compañeros, o si no queda claro quién paga, pregunta:
+👉 “¿Vos vas a asumir la inversión del servicio o lo están haciendo en grupo?”
+
+💡 Tu objetivo no es hacer las cuatro preguntas seguidas, sino obtener esas respuestas de forma orgánica durante el diálogo.
+
+Cuando ya tengas toda la información necesaria (universidad, acceso a data, estado/fecha y responsable del pago), clasificá al cliente:
+- Si tiene todo claro → lead calificado.
+- Si tiene dudas o depende de terceros → lead en observación.
+
+En cualquiera de los casos, ofrecé una acción: agendar una reunión o mostrar las opciones de servicio.
 
 🔒 Reglas
 Si no sabes algo: “Esa información la revisa el área académica, pero puedo coordinar que te la confirmen junto con tu asesor.”
@@ -56,21 +96,79 @@ Al finalizar tus respuestas, invita siempre a avanzar con una acción:
 Tu meta es convertir cada conversación en una oportunidad para agendar o presentar opciones de servicio.
 `;
 
-  // 🔹 Generar embedding desde Ollama
-  private async generarEmbedding(text: string): Promise<number[]> {
-    const result = await ollama.embeddings({
-      model: 'nomic-embed-text',
-      prompt: text,
-    });
-    return result.embedding;
+  constructor(private readonly elevenlabsService: ElevenlabsService) {}
+
+  private extraerDatosCliente(historial: { role: string; content: string }[]) {
+    const cliente: {
+      universidad?: string;
+      carrera?: string;
+      fuente?: string;
+      avance?: string;
+      fechaEntrega?: string;
+      formaPago?: string;
+    } = {};
+
+    for (const mensaje of historial) {
+      if (mensaje.role !== 'user') continue;
+      const texto = mensaje.content.toLowerCase();
+
+      if (!cliente.universidad && /universidad\s+[\w\s]+/.test(texto)) {
+        cliente.universidad = texto
+          .match(/universidad\s+([\w\s]+)/)?.[1]
+          .trim();
+      }
+
+      if (!cliente.carrera && /carrera\s+[\w\s]+/.test(texto)) {
+        cliente.carrera = texto.match(/carrera\s+([\w\s]+)/)?.[1].trim();
+      }
+
+      if (
+        !cliente.fuente &&
+        /(empresa|institución|organización|fuente|lugar de estudio)/.test(texto)
+      ) {
+        cliente.fuente = 'sí'; // simple flag, podrías hacer más específico
+      }
+
+      if (
+        !cliente.avance &&
+        /(desde cero|empezando|ya tengo un avance|parcial)/.test(texto)
+      ) {
+        cliente.avance =
+          texto.includes('desde cero') || texto.includes('empezando')
+            ? 'inicial'
+            : 'parcial';
+      }
+
+      if (
+        !cliente.fechaEntrega &&
+        /(entregar|entrega|fecha).*?(\d{1,2}\/\d{1,2}|\d{4})/.test(texto)
+      ) {
+        cliente.fechaEntrega = texto.match(/(\d{1,2}\/\d{1,2}|\d{4})/)?.[1];
+      }
+
+      if (!cliente.formaPago && /(pago|grupo|individual)/.test(texto)) {
+        cliente.formaPago = texto.includes('grupo') ? 'grupo' : 'individual';
+      }
+    }
+
+    return cliente;
   }
 
-  // 🔹 Limpiar respuesta para evitar caracteres no deseados
+  // 🔹 Generar embedding usando OpenAI
+  private async generarEmbedding(text: string): Promise<number[]> {
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small', // 1536 dimensiones
+      input: text,
+    });
+    return response.data[0].embedding;
+  }
+
+  // 🔹 Limpiar respuesta
   private limpiarRespuesta(texto: string): string {
     return texto
       .replace(/\n/g, ' ')
       .replace(/[•*-]/g, '')
-      .replace(/\s{2,}/g, ' ') // Eliminar espacios extra
+      .replace(/\s{2,}/g, ' ')
       .trim();
   }
 
@@ -82,7 +180,7 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
     embedding: number[],
   ): Promise<void> {
     const id = uuidv4();
-    const result: { error: PostgrestError | null } = await supabase
+    const { error } = await supabase
       .from('chat_messages')
       .insert([
         {
@@ -95,13 +193,12 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
       ])
       .select();
 
-    const { error } = result;
     if (error) {
       console.error('❌ Error al guardar mensaje en Supabase:', error.message);
     }
   }
 
-  // 🔹 Buscar contexto semántico relacionado en Supabase
+  // 🔹 Buscar contexto semántico
   private async buscarContextoRelacionado(
     embedding: number[],
     topK = 3,
@@ -119,15 +216,26 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
     return data?.map((d) => d.content) ?? [];
   }
 
-  // 🔹 Función principal de chat
+  // 🔹 Función principal del chat con control de presentación
   async chat(
     prompt: string,
     sessionId: string,
-  ): Promise<{ content: string; registro: any }> {
+  ): Promise<{
+    content:
+      | string
+      | Buffer
+      | {
+          isAudio: true;
+          message: string;
+          mimeType: string;
+          base64: string;
+        };
+    registro: any;
+  }> {
     try {
       const normalized = prompt.toLowerCase().trim();
 
-      // 💬 Lógica de despedida
+      // 💬 Despedida
       if (/gracias|nos vemos|hasta luego/i.test(normalized)) {
         return {
           content:
@@ -136,32 +244,87 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
         };
       }
 
-      // 🧠 Embedding del prompt
-      const embeddingUsuario = await this.generarEmbedding(prompt);
+      // 🧠 Embedding del mensaje actual
+      const embeddingUsuario = await this.generarEmbedding(normalized);
 
-      // 🔎 Buscar contexto relacionado
+      // 1️⃣ Recuperar historial de la sesión
+      const { data: historial } = await supabase
+        .from('chat_messages')
+        .select('role, content')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true });
+
+      // 🔍 Verificar si ya se presentó Alejandria
+      const yaSePresento = historial?.some(
+        (m) =>
+          m.content.includes('Soy Alejandria') ||
+          m.content.includes('asesora académica del equipo Alejandría'),
+      );
+
+      // 2️⃣ Buscar contexto semántico adicional
       const contextoSemantico =
         await this.buscarContextoRelacionado(embeddingUsuario);
 
-      // 📝 Crear mensajes
-      const mensajes = [
+      // 3️⃣ Crear contexto
+      const mensajesPrevios: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+        (historial ?? []).map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+      const datosCliente = this.extraerDatosCliente(historial ?? []);
+      let resumenEstado = '';
+
+      if (datosCliente.universidad)
+        resumenEstado += `Ya indicó que la universidad es ${datosCliente.universidad}. `;
+      if (datosCliente.carrera)
+        resumenEstado += `La carrera es ${datosCliente.carrera}. `;
+      if (datosCliente.fuente)
+        resumenEstado += `Mencionó que ya tiene una fuente para su investigación. `;
+      if (datosCliente.avance)
+        resumenEstado += `Dijo que está ${datosCliente.avance === 'inicial' ? 'empezando desde cero' : 'con un avance parcial'}. `;
+      if (datosCliente.fechaEntrega)
+        resumenEstado += `La fecha aproximada de entrega es ${datosCliente.fechaEntrega}. `;
+      if (datosCliente.formaPago)
+        resumenEstado += `Indicó que el pago será ${datosCliente.formaPago}. `;
+
+      if (resumenEstado) {
+        mensajesPrevios.unshift({
+          role: 'system',
+          content: `🧠 El cliente ya brindó esta información previamente: ${resumenEstado.trim()}`,
+        });
+      }
+      // 4️⃣ Construir bloque de mensajes
+      const mensajes: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
         { role: 'system', content: this.systemPrompt },
+        ...mensajesPrevios,
         ...contextoSemantico.map((ctx) => ({
-          role: 'assistant',
+          role: 'assistant' as const,
           content: ctx,
         })),
         { role: 'user', content: prompt },
       ];
 
+      // Si no se ha presentado aún, antepone el mensaje inicial
+      if (!yaSePresento) {
+        mensajes.splice(1, 0, {
+          role: 'assistant',
+          content:
+            '¡Hola! Soy Alejandria, asesora académica del equipo Alejandría 👩‍💻. Para brindarte una información más personalizada, ¿podrías contarme de qué carrera, grado académico y para qué universidad sería el servicio?',
+        });
+      }
+
       // 🤖 Generar respuesta
-      const response = await ollama.chat({
-        model: 'gemma',
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
         messages: mensajes,
       });
 
-      const limpio = this.limpiarRespuesta(response.message?.content || '');
+      const limpio = this.limpiarRespuesta(
+        completion.choices[0]?.message?.content || '',
+      );
 
-      // 💾 Guardar mensajes
+      // 💾 Guardar conversación
       const embeddingAsistente = await this.generarEmbedding(limpio);
       await this.guardarMensaje(sessionId, 'user', prompt, embeddingUsuario);
       await this.guardarMensaje(
@@ -179,7 +342,33 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
         respuestaIA: limpio,
       };
 
-      return { content: limpio, registro: registroCliente };
+      // Si la respuesta es en auio,  formateamos para no devolver un buffer gigante en el webhook
+      // ✅ --- AUDIO PARA KOMMON (20% probabilidad) ---
+      const debeHablar = Math.random() < 0.5;
+
+      if (debeHablar) {
+        console.log('🎤 Generando audio para Kommon...');
+
+        const audioBuffer = await this.elevenlabsService.textToSpeech(limpio);
+        const base64Audio = audioBuffer.toString('base64');
+
+        // ✅ ESTE ES EL FORMATO CORRECTO SEGÚN TU TIPADO
+        return {
+          content: {
+            isAudio: true,
+            message: 'Audio generado',
+            mimeType: 'audio/mpeg',
+            base64: base64Audio,
+          },
+          registro: registroCliente,
+        };
+      }
+
+      // ✅ --- TEXTO NORMAL ---
+      return {
+        content: limpio, // ✅ devuelve string, tipo permitido
+        registro: registroCliente,
+      };
     } catch (error) {
       console.error('❌ Error en chat:', error);
       throw new Error('Error al procesar la solicitud del modelo');

@@ -1,36 +1,83 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import * as dotenv from 'dotenv';
+import FormData from 'form-data';
 
 dotenv.config();
 
+// ✅ Interfaz tipada para la respuesta STT
+interface ElevenLabsSTTResponse {
+  text: string;
+}
+
 @Injectable()
 export class ElevenlabsService {
-  private readonly apiKey: string;
+  private readonly ttsKey: string;
+  private readonly sttKey: string;
   private readonly apiUrl: string;
+  private readonly voiceId: string;
 
   constructor() {
-    this.apiKey = process.env.ELEVENLABS_API_KEY || '';
-    this.apiUrl = process.env.ELEVENLABS_API_URL || '';
-    if (!this.apiKey || !this.apiUrl) {
-      throw new Error('API key or API URL is missing in .env file');
+    this.ttsKey = process.env.ELEVENLABS_API_KEY_TTS || '';
+    this.sttKey = process.env.ELEVENLABS_API_KEY_STT || '';
+    this.apiUrl =
+      process.env.ELEVENLABS_API_URL || 'https://api.elevenlabs.io/v1';
+    this.voiceId = process.env.ELEVENLABS_VOICE_ID || 'oYBnOnwnfG6w5YK4xE3C';
+
+    if (!this.ttsKey || !this.sttKey) {
+      throw new Error('❌ API Keys de ElevenLabs faltantes en .env');
     }
   }
 
-  // Método para convertir texto a voz
+  // ✅ TEXT → SPEECH
   async textToSpeech(text: string): Promise<Buffer> {
-    const response = await axios.post(
-      `${this.apiUrl}/text-to-speech`, // Ajusta la URL de la API de ElevenLabs
-      { text },
+    const url = `${this.apiUrl}/text-to-speech/${this.voiceId}`;
+
+    const body = {
+      text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.7,
+      },
+      audio_speed: 1.25, // ✅ AUMENTAR VELOCIDAD
+    };
+
+    const response = await axios.post(url, body, {
+      headers: {
+        'xi-api-key': this.ttsKey,
+        'Content-Type': 'application/json',
+      },
+      responseType: 'arraybuffer',
+    });
+
+    return response.data as Buffer;
+  }
+
+  // ✅ SPEECH → TEXT (corregido sin errores)
+  async speechToText(audioBuffer: Buffer): Promise<string> {
+    const url = `${this.apiUrl}/speech-to-text`;
+
+    const form = new FormData();
+
+    form.append('file', audioBuffer, {
+      filename: 'audio.input', // puede ser .opus, .mp3, .m4a, etc.
+      contentType: 'application/octet-stream', // ElevenLabs detecta solo
+    });
+
+    form.append('model_id', 'scribe_v1');
+
+    const response: AxiosResponse<ElevenLabsSTTResponse> = await axios.post(
+      url,
+      form,
       {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
+          ...form.getHeaders(),
+          'xi-api-key': this.sttKey,
         },
-        responseType: 'arraybuffer', // Especifica que esperamos un array de bytes (audio)
       },
     );
 
-    return response.data as Buffer; // Hacemos un casting explícito a Buffer
+    return response.data.text; // ✅ texto limpio
   }
 }

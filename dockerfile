@@ -1,20 +1,17 @@
-# Usa una imagen base liviana con Node.js
-FROM node:20-alpine
+# Imagen base
+FROM node:20-slim
 
-# Establece el directorio de trabajo dentro del contenedor
 WORKDIR /usr/src/app
 
-# Copia los archivos de dependencias primero (aprovecha cache)
+# Copiá solo package.json primero
 COPY package*.json ./
 
-# Instala las dependencias
-RUN npm install
+# Instalá dependencias con cache persistente
+RUN npm ci
 
-# Copia el resto del código fuente
+# Copiá el resto del proyecto
 COPY . .
 
-# Expone el puerto de la app (NestJS por defecto es 3000)
 EXPOSE 3000
 
-# Comando por defecto (modo desarrollo)
 CMD ["npm", "run", "start:dev"]
