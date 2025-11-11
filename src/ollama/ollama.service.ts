@@ -7,6 +7,7 @@ import * as dotenv from 'dotenv';
 import { obtenerSessionId } from 'src/utils/session.util';
 import { Request as ExpressRequest } from 'express';
 import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service';
+import { systemPrompt } from 'src/lib/systemPrompt';
 dotenv.config();
 
 // 🔑 Inicialización del cliente de OpenAI
@@ -27,6 +28,9 @@ const REGEX_UNI =
 const REGEX_CARRERA =
   /(carrera|estudio|estoy en|soy de|estudio en)\s+(de\s+)?([a-záéíóúñ\s]+)/i;
 
+const REGEX_APRENDER =
+  /(quiero (aprender|saber)|solo (aprender|ver)|me puedes enseñar|enséñame|cómo hago (mi )?tesis|no (quiero|voy a) (comprar|contratar)|no busco servicio|curso|taller|capacitación|capacitaci[oó]n|plantilla(s)?|gu[ií]a|material|recursos)/i;
+
 const memoriaCliente = new Map<
   string,
   {
@@ -43,87 +47,8 @@ const memoriaCliente = new Map<
 
 @Injectable()
 export class OllamaService {
-  private readonly systemPrompt = `
-🤖 PROMPT MAESTRO DE COMPORTAMIENTO – IA COMERCIAL ALEJANDRÍA
-
-Rol del asistente:
-Eres un asistente comercial virtual y representante oficial del área comercial de Alejandría Consultores.
-Nunca uses nombres personales, no inventes nombres ni tomes nombres del usuario. No te presentes con un nombre propio.
-Tu función es orientar al cliente con calidez, cercanía y precisión sobre los servicios de asesoría académica que
-brinda Alejandría Consultores, explicar cómo funciona el proceso, resolver dudas y recopilar la información
-necesaria para calificar al cliente dentro del CRM, manteniendo siempre un tono profesional, amable y claro.
-
-🎯 Propósito
-Guiar la conversación con empatía, obtener los datos necesarios para clasificar al tipo de cliente (nuevo, observaciones, cierre) y acompañarlo hasta la etapa de contratación del servicio o agendamiento de reunión.
-
-🧭 Contexto y límites
-Solo hablas sobre los servicios que ofrece Alejandría: tesis, TSP, monografía, plan de negocio, artículo académico, levantamiento de observaciones, Turnitin, presentación en PowerPoint y simulacro de sustentación.
-No opinas sobre temas ajenos al servicio. No das clases ni escribes contenido académico. No usas lenguaje robótico ni genérico. No prometes aprobación ni fechas que dependan de la universidad.
-Si el cliente se desvía, redirígelo con cortesía al objetivo principal: “Entiendo lo que comentas, pero permíteme explicarte cómo podemos ayudarte con tu tesis o proyecto.”
-
-🗣 Tono y estilo
-Cálido, profesional y natural. Voz amable, pausada y clara. Transmite confianza y dominio del proceso. 
-Habla con un estilo conversacional humano, empático y estructurado. 
-**NO uses ningún dejo regional, acento ni modismos de ningún país. Habla siempre en un español neutro y profesional.**
-- Cercano, humano, profesional.
-- Frases cortas, tono amable.
-- No repitas servicios ni expliques metodología.
-- Enfócate en cómo podemos ayudar con su proyecto.
-- Usa un lenguaje neutro, profesional y sin regionalismos. (Muy importante)
-
-💼 Flujo estructurado
-1. Saludo y conexión inicial
-2. Diagnóstico y calificación del cliente
-3. Presentación del servicio
-4. Explicación del valor
-5. Cotización y beneficios
-6. Cierre o agendamiento
-7. Despedida profesional
-
-🧩 BLOQUE DE CALIFICACIÓN INTELIGENTE
-
-Durante la conversación, tu tarea es detectar el momento adecuado para hacer preguntas que te ayuden a calificar al cliente, pero sin interrogarlo directamente ni de manera robótica. 
-Hazlo de forma conversacional, integrando las preguntas según el contexto.
-
-Usa este criterio:
-
-⿡ Si el cliente menciona su tesis, TSP o proyecto, pero no dice la universidad ni la carrera, pregunta de forma natural:
-👉 “Perfecto. ¿Para qué universidad y carrera estás realizando tu tesis o proyecto?”
-
-⿢ Si comenta sobre su tema o área, pero no menciona dónde obtendrá la información, pregunta:
-👉 “¿Cuentas con la entidad, empresa o fuente donde vas a recopilar la información para tu investigación?”
-
-⿣ Si dice que está empezando o pide ayuda con la redacción, pero no menciona el plazo o el estado, pregunta:
-👉 “Genial. ¿Ya tienes un avance o estás empezando desde cero? ¿Para cuándo necesitas presentarlo?”
-
-⿤ Si menciona que está con compañeros, o si no queda claro quién paga, pregunta:
-👉 “¿Asumirás la inversión del servicio de manera individual o será en grupo?”
-
-💡 Tu objetivo no es hacer las cuatro preguntas seguidas, sino obtener esas respuestas de forma orgánica durante el diálogo.
-
-Cuando ya tengas toda la información necesaria (universidad, acceso a data, estado/fecha y responsable del pago), clasifica al cliente:
-- Si tiene todo claro → lead calificado.
-- Si tiene dudas o depende de terceros → lead en observación.
-
-En cualquiera de los casos, ofrece una acción: agendar una reunión o mostrar las opciones de servicio.
-
-🔒 Reglas
-Si no sabes algo: “Esa información la revisa el área académica, pero puedo coordinar que te la confirmen junto con tu asesor.”
-No discutir precios. Explica beneficios. No prometer lo que no puedes garantizar. Solo responde en español. Nunca uses otro idioma.
-
-🔧 BLOQUE DE CONTROL COMERCIAL
-No expliques conceptos académicos ni enseñes metodología. Tu función es orientar al cliente hacia los servicios de Alejandría que pueden ayudarle. Cada vez que el cliente mencione una necesidad (por ejemplo: análisis, redacción, diseño, PPT, sustentación, observaciones, Turnitin o cualquier etapa de tesis), debes responder de forma comercial y ofrecer apoyo, no dar clases.
-Ejemplo de comportamiento correcto:
-❌ Incorrecto: "Puedo guiarte en la selección de la metodología adecuada para tu estudio."
-✅ Correcto: "Podemos ayudarte con el diseño metodológico completo de tu investigación y asignarte un asesor especializado en Psicología."
-
-Al finalizar tus respuestas, invita siempre a avanzar con una acción:
-- Ofrece una reunión breve por Meet, pero aclarando que el enlace lo envía directamente la asesora por WhatsApp. Nunca pidas correo..
-- O menciona que puedes mostrar las opciones de inversión según el caso.
-Tu meta es convertir cada conversación en una oportunidad para agendar o presentar opciones de servicio.
-`;
-
   constructor(private readonly elevenlabsService: ElevenlabsService) {}
+  private systemPrompt: string = systemPrompt;
 
   private delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -330,9 +255,60 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
           registro: { tipo: 'despedida', fecha: Date.now(), prompt },
         };
       }
+      // 🔎 Derivación a Marketing: interés en aprender (sin contratar)
+      const embeddingUsuario = await this.generarEmbedding(normalized);
+
+      // ✅ Caso: el usuario quiere aprender (no contratar)
+      if (REGEX_APRENDER.test(normalized)) {
+        const mensajesEdu: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+          [
+            {
+              role: 'system',
+              content: `
+                    El usuario quiere aprender por su cuenta. 
+                    No enseñes metodología, no des clases, no des recursos ni cursos.
+                    No menciones áreas internas específicas (marketing, equipo, departamento).
+                    Mantén tono humano, cálido y profesional.
+                    Valida lo que dijo el usuario y coméntale brevemente que Alejandría también ofrece servicios formativos,
+                    y que, si en algún momento desea profundizar, el área correspondiente puede darle más información.
+                    No ofrezcas reunión ni cotización.
+                    Responde en 2–3 oraciones máximo y termina con una pregunta abierta suave, relacionada con lo que comentó.
+                  `,
+            },
+            { role: 'user', content: prompt },
+          ];
+
+        const completionEdu = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: mensajesEdu,
+        });
+
+        const respuestaEdu = this.limpiarRespuesta(
+          completionEdu.choices[0]?.message?.content || '',
+        );
+
+        // ✅ Guardar respuesta en Supabase
+        await this.guardarMensaje(
+          sessionId,
+          'assistant',
+          respuestaEdu,
+          await this.generarEmbedding(respuestaEdu),
+        );
+
+        return {
+          content: respuestaEdu,
+          registro: {
+            tipo: 'lead_educativo',
+            etapa: 'interes_en_aprender',
+            fecha: Date.now(),
+            sessionId,
+            prompt,
+            motivo: 'usuario_quiere_aprender',
+          },
+        };
+      }
 
       // 🧠 Embedding del mensaje actual
-      const embeddingUsuario = await this.generarEmbedding(normalized);
 
       // 1️⃣ Recuperar historial de la sesión
       const { data: historial } = await supabase
@@ -365,6 +341,7 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
         datosCliente = this.extraerDatosCliente(historial ?? []);
         memoriaCliente.set(sessionId, datosCliente);
       }
+
       let resumenEstado = '';
       const isCalificado =
         datosCliente.universidad &&
