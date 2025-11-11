@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { Database } from 'src/database.types';
 import OpenAI from 'openai';
 import * as dotenv from 'dotenv';
+import { obtenerSessionId } from 'src/utils/session.util';
+import { Request as ExpressRequest } from 'express';
 import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service';
 dotenv.config();
 
@@ -19,11 +21,25 @@ const supabase = createClient<Database>(
 );
 
 const REGEX_UNI =
-  /(universidad\s+[a-záéíóúñ\s]+|ucv|upn|upc|unmsm|unsa|utp|usmp|unfv|cayetano|tecsup|senati|isil)/i;
+  /(universidad\s+[a-záéíóúñ\s]+|ucv|upn|upc|unmsm|unsa|utp|usmp|unfv|cayetano|tecsup|uni|usil)/i;
 
 // ✅ REGEX de carreras
 const REGEX_CARRERA =
   /(carrera|estudio|estoy en|soy de|estudio en)\s+(de\s+)?([a-záéíóúñ\s]+)/i;
+
+const memoriaCliente = new Map<
+  string,
+  {
+    universidad?: string;
+    carrera?: string;
+    fuente?: string;
+    avance?: string;
+    requiereDocumentoParaCotizar?: boolean;
+    fechaEntrega?: string;
+    formaPago?: string;
+    yaEnvioDocumento?: boolean;
+  }
+>();
 
 @Injectable()
 export class OllamaService {
@@ -31,25 +47,29 @@ export class OllamaService {
 🤖 PROMPT MAESTRO DE COMPORTAMIENTO – IA COMERCIAL ALEJANDRÍA
 
 Rol del asistente:
-Sos un asistente comercial virtual y representante oficial del área comercial de Alejandría Consultores. 
+Eres un asistente comercial virtual y representante oficial del área comercial de Alejandría Consultores.
 Nunca uses nombres personales, no inventes nombres ni tomes nombres del usuario. No te presentes con un nombre propio.
-Tu función es orientar al cliente con calidez, cercanía y precisión sobre los servicios de asesoría académica que 
-brinda Alejandría Consultores, explicar cómo funciona el proceso, resolver dudas y recopilar la información 
+Tu función es orientar al cliente con calidez, cercanía y precisión sobre los servicios de asesoría académica que
+brinda Alejandría Consultores, explicar cómo funciona el proceso, resolver dudas y recopilar la información
 necesaria para calificar al cliente dentro del CRM, manteniendo siempre un tono profesional, amable y claro.
 
 🎯 Propósito
-Guiar la conversación con empatía, obtener los datos necesarios para clasificar el tipo de cliente (nuevo, observaciones, cierre) y acompañarlo hasta la etapa de contratación del servicio o agendamiento de reunión.
+Guiar la conversación con empatía, obtener los datos necesarios para clasificar al tipo de cliente (nuevo, observaciones, cierre) y acompañarlo hasta la etapa de contratación del servicio o agendamiento de reunión.
 
 🧭 Contexto y límites
-Solo hablas sobre los servicios que ofrece Alejandría: Tesis, TSP, monografía, plan de negocio, artículo académico, levantamiento de observaciones, Turnitin, PPT profesional y simulacro de sustentación. No opinas sobre temas ajenos al servicio (religión, política, universidad, vida personal). No das clases ni escribes contenido académico. No usas lenguaje robótico ni genérico. No prometes aprobación ni plazos que dependan de la universidad. Si el cliente se desvía, redirígelo con cortesía al objetivo principal: “Entiendo lo que comentas, pero déjame contarte cómo podemos ayudarte con tu tesis o proyecto.”
+Solo hablas sobre los servicios que ofrece Alejandría: tesis, TSP, monografía, plan de negocio, artículo académico, levantamiento de observaciones, Turnitin, presentación en PowerPoint y simulacro de sustentación.
+No opinas sobre temas ajenos al servicio. No das clases ni escribes contenido académico. No usas lenguaje robótico ni genérico. No prometes aprobación ni fechas que dependan de la universidad.
+Si el cliente se desvía, redirígelo con cortesía al objetivo principal: “Entiendo lo que comentas, pero permíteme explicarte cómo podemos ayudarte con tu tesis o proyecto.”
 
 🗣 Tono y estilo
-Cálido, profesional y natural. Voz amable, pausada y clara. Transmite confianza y dominio del proceso. Habla con un estilo conversacional humano, empático y estructurado. 
+Cálido, profesional y natural. Voz amable, pausada y clara. Transmite confianza y dominio del proceso. 
+Habla con un estilo conversacional humano, empático y estructurado. 
 **NO uses ningún dejo regional, acento ni modismos de ningún país. Habla siempre en un español neutro y profesional.**
 - Cercano, humano, profesional.
-- Frases cortas y tono amable.
+- Frases cortas, tono amable.
 - No repitas servicios ni expliques metodología.
-- Enfocate en cómo podemos ayudarlo con su proyecto.
+- Enfócate en cómo podemos ayudar con su proyecto.
+- Usa un lenguaje neutro, profesional y sin regionalismos. (Muy importante)
 
 💼 Flujo estructurado
 1. Saludo y conexión inicial
@@ -71,21 +91,21 @@ Usa este criterio:
 👉 “Perfecto. ¿Para qué universidad y carrera estás realizando tu tesis o proyecto?”
 
 ⿢ Si comenta sobre su tema o área, pero no menciona dónde obtendrá la información, pregunta:
-👉 “¿Contás con la entidad, empresa o fuente donde vas a recopilar la información para tu investigación?”
+👉 “¿Cuentas con la entidad, empresa o fuente donde vas a recopilar la información para tu investigación?”
 
 ⿣ Si dice que está empezando o pide ayuda con la redacción, pero no menciona el plazo o el estado, pregunta:
-👉 “Genial. ¿Ya tenés un avance o estás empezando desde cero? ¿Para cuándo necesitás presentarlo?”
+👉 “Genial. ¿Ya tienes un avance o estás empezando desde cero? ¿Para cuándo necesitas presentarlo?”
 
 ⿤ Si menciona que está con compañeros, o si no queda claro quién paga, pregunta:
-👉 “¿Vos vas a asumir la inversión del servicio o lo están haciendo en grupo?”
+👉 “¿Asumirás la inversión del servicio de manera individual o será en grupo?”
 
 💡 Tu objetivo no es hacer las cuatro preguntas seguidas, sino obtener esas respuestas de forma orgánica durante el diálogo.
 
-Cuando ya tengas toda la información necesaria (universidad, acceso a data, estado/fecha y responsable del pago), clasificá al cliente:
+Cuando ya tengas toda la información necesaria (universidad, acceso a data, estado/fecha y responsable del pago), clasifica al cliente:
 - Si tiene todo claro → lead calificado.
 - Si tiene dudas o depende de terceros → lead en observación.
 
-En cualquiera de los casos, ofrecé una acción: agendar una reunión o mostrar las opciones de servicio.
+En cualquiera de los casos, ofrece una acción: agendar una reunión o mostrar las opciones de servicio.
 
 🔒 Reglas
 Si no sabes algo: “Esa información la revisa el área académica, pero puedo coordinar que te la confirmen junto con tu asesor.”
@@ -115,6 +135,7 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
       carrera?: string;
       fuente?: string;
       avance?: string;
+      requiereDocumentoParaCotizar?: boolean;
       fechaEntrega?: string;
       formaPago?: string;
     } = {};
@@ -145,9 +166,47 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
       }
 
       // ✅ Avance
+      // ✅ DETECCIÓN DE AVANCE (VERSIÓN SEGURA)
       if (!cliente.avance) {
-        if (/desde cero|empezando/.test(texto)) cliente.avance = 'inicial';
-        else if (/avance|parcial/.test(texto)) cliente.avance = 'parcial';
+        // 🚀 Empezando desde cero
+        if (
+          /(desde cero|reci[eé]n empez|no tengo nada|sin avanzar|sin hacer|aún no empiezo|no he hecho nada)/i.test(
+            texto,
+          )
+        ) {
+          cliente.avance = 'inicial';
+        }
+
+        // ✅ Avance parcial real (mejorado)
+        else if (
+          /(tengo un avance|ya tengo un avance|ya hice|ya tengo|llevo|he avanzado|voy por el cap[ií]tulo|cap[ií]tulo \d|capitulo \d|tengo parte|falta poco|solo falta|avance parcial)/i.test(
+            texto,
+          )
+        ) {
+          cliente.avance = 'parcial';
+          cliente.requiereDocumentoParaCotizar = true;
+        }
+
+        // ✅ Confirmaciones simples después de pregunta del bot
+        else if (!cliente.avance) {
+          const ultimoMensajeBot =
+            historial?.filter((m) => m.role === 'assistant').slice(-1)[0]
+              ?.content || '';
+
+          const botPreguntoAvance =
+            /(avance|progreso|empezando|desde cero|ya tienes algo)/i.test(
+              ultimoMensajeBot,
+            );
+
+          const confirmacion = /^(si|sí|claro|correcto|así es)$/i.test(
+            texto.trim(),
+          );
+
+          if (botPreguntoAvance && confirmacion) {
+            cliente.avance = 'parcial';
+            cliente.requiereDocumentoParaCotizar = true;
+          }
+        }
       }
 
       // ✅ Fecha entrega
@@ -231,8 +290,9 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
 
   // 🔹 Función principal del chat con control de presentación
   async chat(
-    prompt: string,
-    sessionId: string,
+    reqOrPrompt: ExpressRequest | string,
+    promptOrSessionId: string,
+    fileRecibido?: { name: string; mimeType: string },
   ): Promise<{
     content:
       | string
@@ -245,6 +305,20 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
         };
     registro: any;
   }> {
+    // 👇 Manejo de entrada dual (desde controller o desde Kommo)
+    let prompt: string;
+    let sessionId: string;
+
+    if (typeof reqOrPrompt === 'string') {
+      // 🔹 Llamado desde Kommo → (prompt, sessionId)
+      prompt = reqOrPrompt;
+      sessionId = promptOrSessionId;
+    } else {
+      // 🔸 Llamado desde HTTP controller → (req, prompt)
+      const req = reqOrPrompt;
+      prompt = promptOrSessionId;
+      sessionId = obtenerSessionId(req);
+    }
     try {
       const normalized = prompt.toLowerCase().trim();
 
@@ -285,7 +359,12 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
           content: m.content,
         }));
 
-      const datosCliente = this.extraerDatosCliente(historial ?? []);
+      let datosCliente = memoriaCliente.get(sessionId);
+
+      if (!datosCliente) {
+        datosCliente = this.extraerDatosCliente(historial ?? []);
+        memoriaCliente.set(sessionId, datosCliente);
+      }
       let resumenEstado = '';
       const isCalificado =
         datosCliente.universidad &&
@@ -318,12 +397,83 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
         };
       }
 
+      const yaEnvioDocumento = datosCliente.yaEnvioDocumento;
+
+      // ✅ Solicitar documento APENAS detecta avance parcial
+      if (
+        datosCliente.avance === 'parcial' &&
+        !fileRecibido &&
+        !yaEnvioDocumento
+      ) {
+        return {
+          content:
+            'Perfecto, como ya tienes un avance, necesitamos revisar el documento para poder enviarte una cotización justa. ¿Podrías compartirlo por aquí para que el área de cotización lo evalúe?',
+          registro: {
+            tipo: 'solicitud-documento-inmediata',
+            etapa: 'esperando_documento',
+            fecha: Date.now(),
+            prompt,
+          },
+        };
+      }
+
+      // ✅ Solicitar documento SI YA ESTÁ CALIFICADO y aún no lo envió
+      if (
+        isCalificado &&
+        datosCliente.requiereDocumentoParaCotizar &&
+        !fileRecibido &&
+        !yaEnvioDocumento
+      ) {
+        return {
+          content:
+            'Como ya cuentas con un avance, necesitamos revisar tu documento para poder darte una cotización precisa. ¿Podrías enviarlo para que el área de cotización lo evalúe?',
+          registro: {
+            tipo: 'solicitud-documento-cotizacion',
+            etapa: 'esperando_documento',
+            fecha: Date.now(),
+            prompt,
+          },
+        };
+      }
+
+      // ✅ Actualizar memoria: marcamos que ya envió archivo
+      datosCliente.yaEnvioDocumento = true;
+      memoriaCliente.set(sessionId, datosCliente);
+
+      // ✅ Si se envió un documento
+      if (fileRecibido) {
+        if (!isCalificado) {
+          return {
+            content:
+              'Perfecto, gracias por el archivo 📄. Antes de que el área de cotización pueda revisarlo, necesito unos datos básicos: ¿Para qué universidad y carrera es tu proyecto? También necesito saber si ya tienes una fecha aproximada de entrega y si el pago lo harás de manera individual o en grupo.',
+            registro: {
+              tipo: 'documento_recibido_sin_calificar',
+              fecha: Date.now(),
+              prompt,
+              archivo: fileRecibido,
+            },
+          };
+        }
+
+        return {
+          content: `Perfecto, recibí tu archivo *${fileRecibido.name}* 📄. El área de cotización lo revisará y te responderá con todos los detalles en breve.`,
+          registro: {
+            tipo: 'documento_recibido_calificado',
+            etapa: 'esperando_cotizacion',
+            fecha: Date.now(),
+            prompt,
+            archivo: fileRecibido,
+          },
+        };
+      }
+
       if (resumenEstado) {
         mensajesPrevios.unshift({
           role: 'system',
           content: `🧠 El cliente ya brindó esta información previamente: ${resumenEstado.trim()}`,
         });
       }
+
       // 4️⃣ Construir bloque de mensajes
       const mensajes: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
         { role: 'system', content: this.systemPrompt },
@@ -378,7 +528,7 @@ Tu meta es convertir cada conversación en una oportunidad para agendar o presen
 
       // Si la respuesta es en auio,  formateamos para no devolver un buffer gigante en el webhook
       // ✅ --- AUDIO PARA KOMMON (20% probabilidad) ---
-      const debeHablar = Math.random() < 0.5;
+      const debeHablar = Math.random() < 0.2;
 
       if (debeHablar) {
         console.log('🎤 Generando audio para Kommon...');

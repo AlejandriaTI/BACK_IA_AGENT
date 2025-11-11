@@ -5,13 +5,14 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { v4 as uuidv4 } from 'uuid';
 import { OllamaService } from './ollama.service';
-import type { Express } from 'express'; // ✅ Import type para metadata segura
 import multer from 'multer';
 import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service';
+import { obtenerSessionId } from 'src/utils/session.util';
+import type { Request as ExpressRequest } from 'express';
 
 @Controller('ollama')
 export class OllamaController {
@@ -23,31 +24,44 @@ export class OllamaController {
   @Post('chat')
   @UseInterceptors(FileInterceptor('file', { storage: multer.memoryStorage() }))
   async chatPost(
+    @Req() req: ExpressRequest,
     @Body() body: { prompt: string },
     @UploadedFile() file: Express.Multer.File,
   ) {
-    const sessionId = uuidv4();
-
+    const sessionId = obtenerSessionId(req); // 👈 usa la lógica del hash
     let textToSend = body?.prompt ?? '';
+    let fileRecibido: { name: string; mimeType: string } | undefined;
 
-    // ✅ Si viene audio, primero lo convertimos a texto
     if (file) {
-      console.log('🎤 Audio recibido en memoria:', file.originalname);
+      console.log('📎 Archivo recibido:', file.originalname);
 
-      if (!file.buffer) {
-        throw new BadRequestException('El archivo no contiene buffer.');
+      const mime = file.mimetype;
+      const isAudio = mime.startsWith('audio/');
+      const isDoc = mime === 'application/pdf' || mime.includes('word');
+
+      if (isAudio) {
+        if (!file.buffer) {
+          throw new BadRequestException(
+            'El archivo de audio no tiene contenido.',
+          );
+        }
+
+        textToSend = await this.elevenlabsService.speechToText(file.buffer);
+        console.log('📜 Texto obtenido del audio:', textToSend);
+      } else if (isDoc) {
+        fileRecibido = {
+          name: file.originalname,
+          mimeType: file.mimetype,
+        };
+      } else {
+        throw new BadRequestException('Tipo de archivo no soportado.');
       }
-
-      // ✅ Convertir audio → texto ANTES del chat
-      textToSend = await this.elevenlabsService.speechToText(file.buffer);
-
-      console.log('📜 Texto obtenido del audio:', textToSend);
     }
 
-    // ✅ Ahora SÍ se envía solamente texto al chat
     const response = await this.ollamaService.chat(
-      textToSend, // ✅ SIEMPRE STRING
-      sessionId,
+      req, // 👈 pasamos todo el `req` ahora
+      textToSend,
+      fileRecibido,
     );
 
     return {
