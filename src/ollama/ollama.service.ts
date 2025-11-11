@@ -31,6 +31,9 @@ const REGEX_CARRERA =
 const REGEX_APRENDER =
   /(quiero (aprender|saber)|solo (aprender|ver)|me puedes enseñar|enséñame|cómo hago (mi )?tesis|no (quiero|voy a) (comprar|contratar)|no busco servicio|curso|taller|capacitación|capacitaci[oó]n|plantilla(s)?|gu[ií]a|material|recursos)/i;
 
+const REGEX_TRABAJO_PUNTUAL =
+  /(arreglar|corregir|correcci[oó]n|formato|mejorar|editar|turnitin|plagio|powerpoint|ppt|diapositivas|observaciones|cap[ií]tulo|capitulo|solo una parte|solo necesito|corregir capítulo|revisión)/i;
+
 const memoriaCliente = new Map<
   string,
   {
@@ -304,6 +307,45 @@ export class OllamaService {
             sessionId,
             prompt,
             motivo: 'usuario_quiere_aprender',
+          },
+        };
+      }
+
+      if (REGEX_TRABAJO_PUNTUAL.test(normalized)) {
+        const mensajesTrabajoPuntual = [
+          {
+            role: 'system',
+            content: `
+          El usuario solicita un trabajo puntual.
+          Tu tarea:
+          - Responde de forma natural y breve (2–3 oraciones).
+          - Indica que para darle un monto justo necesitas revisar el archivo exacto.
+          - Pide el archivo en tus propias palabras.
+          - No pidas universidad, carrera, fecha ni forma de pago.
+          - No ofrezcas reunión.
+          - No uses frases fijas.
+        `,
+          },
+          { role: 'user', content: prompt },
+        ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: mensajesTrabajoPuntual,
+        });
+
+        const respuesta = this.limpiarRespuesta(
+          completion.choices[0]?.message?.content || '',
+        );
+
+        return {
+          content: respuesta,
+          registro: {
+            tipo: 'trabajo_puntual',
+            etapa: 'solicitar_archivo_para_cotizacion',
+            fecha: Date.now(),
+            sessionId,
+            prompt,
           },
         };
       }
