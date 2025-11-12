@@ -34,14 +34,14 @@ interface KommoFileUploadResponse {
 
 @Injectable()
 export class KommoService {
-  private readonly CLIENT_ID = '6b1ad1dc-32ed-426e-9e60-874ab861ba83';
-  private readonly CLIENT_SECRET =
-    'mj9C7fVpTeIHZugIcliMY5BJgzWvRWvTzXLVNLCEFLXvncsBqE3rKX5njx7qIjDw';
-  private readonly REDIRECT_URI =
-    'https://219181eba263.ngrok-free.app/kommo/callback';
-  private readonly AUTH_URL = 'https://12348878.kommo.com/oauth2/authorize';
-  private readonly TOKEN_URL = 'https://12348878.kommo.com/oauth2/access_token';
-  private readonly API_URL = 'https://12348878.kommo.com/api/v4';
+  private readonly CLIENT_ID = process.env.KOMMO_CLIENT_ID;
+  private readonly CLIENT_SECRET = process.env.KOMMO_CLIENT_SECRET;
+  private readonly REDIRECT_URI = process.env.KOMMO_REDIRECT_URI;
+  private readonly KOMMO_DOMAIN = process.env.KOMMO_SUBDOMAIN;
+
+  private readonly AUTH_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/oauth2/authorize`;
+  private readonly TOKEN_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/oauth2/access_token`;
+  private readonly API_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/api/v4`;
 
   private accessToken = '';
   private refreshToken = '';

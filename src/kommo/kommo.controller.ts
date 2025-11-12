@@ -19,11 +19,13 @@ export class KommoController {
 
   @Get('authorize')
   authorize(@Res() res: ExpressResponse): void {
-    const url = `https://12348878.kommo.com/oauth2/authorize?client_id=6b1ad1dc-32ed-426e-9e60-874ab861ba83&redirect_uri=https://219181eba263.ngrok-free.app/kommo/auth&response_type=code`;
+    const url =
+      'https://12348878.kommo.com/oauth2/authorize?client_id=6b1ad1dc-32ed-426e-9e60-874ab861ba83&redirect_uri=https://704e98cba053.ngrok-free.app/kommo/auth&response_type=code';
 
     console.log('🔗 URL de autorización generada:', url);
-    return res.redirect(url);
+    res.redirect(url);
   }
+
   @Get('auth')
   async authenticate(@Query('code') code: string) {
     try {
