@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import { KommoService } from './kommo.service';
+import type { Response as ExpressResponse } from 'express';
 
 // ✅ Tipos reales del webhook de Kommo
 interface KommoIncomingMessage {
@@ -16,9 +17,32 @@ interface KommoIncomingMessage {
 export class KommoController {
   constructor(private readonly kommoService: KommoService) {}
 
+  @Get('authorize')
+  authorize(@Res() res: ExpressResponse): void {
+    const url = `https://12348878.kommo.com/oauth2/authorize?client_id=6b1ad1dc-32ed-426e-9e60-874ab861ba83&redirect_uri=https://219181eba263.ngrok-free.app/kommo/auth&response_type=code`;
+
+    console.log('🔗 URL de autorización generada:', url);
+    return res.redirect(url);
+  }
   @Get('auth')
-  authenticate(@Query('code') code: string): Promise<void> {
-    return this.kommoService.authenticate(code);
+  async authenticate(@Query('code') code: string) {
+    try {
+      console.log('✅ CODE recibido de Kommo:', code);
+
+      await this.kommoService.authenticate(code);
+
+      return `
+      <html>
+        <body style="font-family: sans-serif; padding: 40px;">
+          <h1>✅ Integración autorizada correctamente</h1>
+          <p>Ya podés cerrar esta pestaña.</p>
+        </body>
+      </html>
+      `;
+    } catch (error) {
+      console.error('❌ Error autenticando:', error);
+      return 'Error autenticando integración.';
+    }
   }
 
   @Get('leads')

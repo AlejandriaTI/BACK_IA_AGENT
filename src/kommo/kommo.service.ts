@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
 import * as querystring from 'querystring';
 import { PIPELINES } from './config/pipeline.config';
 import { AIResponse } from './config/ia.config.response';
@@ -47,10 +46,7 @@ export class KommoService {
   private accessToken = '';
   private refreshToken = '';
 
-  constructor(
-    private readonly httpService: HttpService,
-    private readonly ollamaService: OllamaService,
-  ) {}
+  constructor(private readonly ollamaService: OllamaService) {}
 
   private isAudioContent(
     content: unknown,

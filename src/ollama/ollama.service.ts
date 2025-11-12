@@ -547,7 +547,7 @@ export class OllamaService {
 
       // Si la respuesta es en auio,  formateamos para no devolver un buffer gigante en el webhook
       // ✅ --- AUDIO PARA KOMMON (20% probabilidad) ---
-      const debeHablar = Math.random() < 0.2;
+      const debeHablar = Math.random() < 0.5;
 
       if (debeHablar) {
         console.log('🎤 Generando audio para Kommon...');
