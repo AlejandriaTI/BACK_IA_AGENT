@@ -38,8 +38,16 @@ export class KommoService {
 
   // 🔥 Token de larga duración (no expira por meses)
   private readonly accessToken = process.env.KOMMO_KEY_DURATION;
+  private readonly baseUrl: string;
+  private readonly headers: Record<string, string>;
+  constructor(private readonly ollamaService: OllamaService) {
+    this.baseUrl = `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com`;
 
-  constructor(private readonly ollamaService: OllamaService) {}
+    this.headers = {
+      Authorization: `Bearer ${process.env.KOMMO_KEY_DURATION}`,
+      'Content-Type': 'application/json',
+    };
+  }
 
   private isAudioContent(
     content: unknown,
@@ -123,34 +131,35 @@ export class KommoService {
     }
   }
 
-  // 🔄 Mover lead entre embudos
   async moveLeadToPipeline(
-    leadId: string | number,
+    leadId: number,
     pipelineId: number,
     statusId: number,
-  ): Promise<unknown> {
-    if (!this.accessToken) throw new Error('Token no disponible.');
-
-    const body = [{ id: leadId, pipeline_id: pipelineId, status_id: statusId }];
-
+  ) {
     try {
-      const response = await axios.patch(`${this.API_URL}/leads`, body, {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
+      const payload = [
+        {
+          id: Number(leadId),
+          pipeline_id: Number(pipelineId),
+          status_id: Number(statusId),
         },
+      ];
+
+      console.log('➡️ Moviendo lead con:', payload);
+
+      const res = await axios.patch(`${this.API_URL}/api/v4/leads`, payload, {
+        headers: this.headers,
       });
-      console.log(
-        `✅ Lead ${leadId} movido a pipeline ${pipelineId}, status ${statusId}`,
-      );
-      return response.data;
-    } catch (err) {
-      const error = err as AxiosError;
+
+      console.log('✅ Lead movido correctamente');
+      return res.data as Record<string, unknown>;
+    } catch (error: unknown) {
+      const err = error as AxiosError<any>;
       console.error(
         '❌ Error al mover lead:',
-        error.response?.data ?? error.message,
+        err.response?.data ?? err.message,
       );
-      throw error;
+      throw new Error('No se pudo mover el lead');
     }
   }
 
@@ -266,7 +275,7 @@ export class KommoService {
 
     const statusId = mapa[tipo];
 
-    await this.moveLeadToPipeline(String(leadId), pipelineId, statusId);
+    await this.moveLeadToPipeline(Number(leadId), pipelineId, statusId);
   }
 
   async processAIMessage(
@@ -275,84 +284,156 @@ export class KommoService {
     conversationId: string,
     leadId: number,
   ): Promise<{ success: boolean; type: string }> {
-    // 🔍 1) NO RESPONDER si tiene STOP (ANTES de llamar a IA)
-    const tieneStop = await this.hasStopTag(leadId);
-    if (tieneStop) {
-      console.log('⛔ Lead con STOP, no respondemos.');
-      return { success: true, type: 'ignored' };
-    }
-
-    // 2) Procesar con IA
-    let aiResp: AIResponse;
     try {
-      aiResp = await this.ollamaService.chat(prompt, sessionId);
-    } catch (err) {
-      console.error('❌ Error ejecutando IA:', err);
-      return { success: false, type: 'error' };
-    }
+      // ------------------------------------------------------------------
+      // 1) Verificar STOP
+      // ------------------------------------------------------------------
+      const tieneStop = await this.hasStopTag(leadId);
+      if (tieneStop) {
+        console.log(`⛔ Lead ${leadId} tiene STOP, no respondemos.`);
+        return { success: true, type: 'ignored' };
+      }
 
-    const content = aiResp.content;
-    const tipoIA = aiResp.registro?.tipo;
-
-    // 3) Convertir tipo interno → pipeline comercial
-    let tipo: 'FRIO' | 'TIBIO' | 'COTIZACION' | 'MARKETING' = 'FRIO';
-
-    switch (tipoIA) {
-      case 'FRIO':
-        tipo = 'FRIO';
-        break;
-
-      case 'TIBIO':
-        tipo = 'TIBIO';
-        break;
-
-      case 'lead_educativo':
-        tipo = 'MARKETING';
-        break;
-
-      case 'trabajo_puntual':
-      case 'solicitud-documento-inmediata':
-      case 'solicitud-documento-cotizacion':
-        tipo = 'COTIZACION';
-        break;
-
-      default:
-        tipo = 'FRIO';
-        break;
-    }
-
-    // 4) Mover al pipeline una sola vez
-    await this.moverSegunClasificacion(leadId, tipo);
-
-    // 5) Si DEJA DE SER FRÍO → poner STOP
-    if (tipo !== 'FRIO') {
-      console.log('🛑 El lead dejó de ser FRÍO. Agregando STOP...');
-      await this.addStopTag(leadId);
-    }
-
-    // 6) Crear mensaje según si es texto o audio
-    if (typeof content === 'string') {
-      await this.sendChatMessage(conversationId, `<p>${content}</p>`);
-      return { success: true, type: 'text' };
-    }
-
-    if (this.isAudioContent(content)) {
-      try {
-        await this.sendRealAudioMessage(
+      // ------------------------------------------------------------------
+      // 2) Llamar a la IA
+      // ------------------------------------------------------------------
+      const aiResp: AIResponse = await this.ollamaService.chat(
+        {
+          sessionId,
+          kommo: true,
           conversationId,
-          content.mimeType,
-          content.base64,
+          leadId,
+        } as any,
+        prompt,
+      );
+
+      console.log('🧪 RESPUESTA IA:', JSON.stringify(aiResp, null, 2));
+
+      const { content, registro } = aiResp;
+      const tipoIA = registro?.tipo;
+
+      // ------------------------------------------------------------------
+      // 3) Normalizar contenido → TEXTO o AUDIO
+      // ------------------------------------------------------------------
+      let textoFinal: string | null = null;
+      let audioFinal: { mimeType: string; base64: string } | null = null;
+
+      if (typeof content === 'string') {
+        textoFinal = content.trim();
+      } else if (
+        typeof content === 'object' &&
+        content !== null &&
+        'isAudio' in content &&
+        content.isAudio === true
+      ) {
+        audioFinal = {
+          mimeType: content.mimeType,
+          base64: content.base64,
+        };
+
+        if (content.message) textoFinal = content.message;
+      } else if (Buffer.isBuffer(content)) {
+        textoFinal = content.toString('utf8');
+      }
+
+      console.log('📝 TEXTO NORMALIZADO:', textoFinal ?? '(ninguno)');
+      console.log('🎧 AUDIO DETECTADO:', audioFinal ? true : false);
+
+      // Seguridad: nunca responder vacío
+      if (!textoFinal && !audioFinal) {
+        console.warn(
+          '⚠️ La IA no devolvió texto ni audio. No se puede responder.',
         );
+        return { success: false, type: 'empty' };
+      }
+
+      // ------------------------------------------------------------------
+      // 4) Clasificar lead
+      // ------------------------------------------------------------------
+      let tipoPipeline: 'FRIO' | 'TIBIO' | 'COTIZACION' | 'MARKETING' = 'FRIO';
+
+      switch (tipoIA) {
+        case 'TIBIO':
+          tipoPipeline = 'TIBIO';
+          break;
+        case 'lead_educativo':
+          tipoPipeline = 'MARKETING';
+          break;
+        case 'trabajo_puntual':
+        case 'solicitud-documento-inmediata':
+        case 'solicitud-documento-cotizacion':
+          tipoPipeline = 'COTIZACION';
+          break;
+        default:
+          tipoPipeline = 'FRIO';
+      }
+
+      await this.moverSegunClasificacion(leadId, tipoPipeline);
+
+      // Si deja de ser FRIO → poner STOP
+      if (tipoPipeline !== 'FRIO') {
+        console.log('🛑 El lead dejó de ser FRÍO → agregando STOP');
+        await this.addStopTag(leadId);
+      }
+
+      // ------------------------------------------------------------------
+      // 5) Enviar mensaje a Kommo
+      // ------------------------------------------------------------------
+
+      // A) Si hay texto → siempre se envía primero
+      if (textoFinal) {
+        console.log('💬 Enviando MENSAJE DE TEXTO a Kommo:', textoFinal);
+
+        try {
+          await this.sendChatMessage(conversationId, `<p>${textoFinal}</p>`);
+        } catch (err) {
+          console.error('❌ Error enviando mensaje de texto a Kommo:', err);
+          return { success: false, type: 'text-error' };
+        }
+
+        // Si también hay audio → lo enviamos después
+        if (audioFinal) {
+          try {
+            console.log('🎧 Enviando AUDIO a Kommo...');
+            await this.sendRealAudioMessage(
+              conversationId,
+              audioFinal.mimeType,
+              audioFinal.base64,
+            );
+          } catch (err) {
+            console.error('❌ Error enviando audio a Kommo:', err);
+          }
+
+          return { success: true, type: 'text+audio' };
+        }
+
+        return { success: true, type: 'text' };
+      }
+
+      // B) Si NO hay texto, pero sí audio
+      if (audioFinal) {
+        console.log('🎧 Enviando SOLO AUDIO a Kommo...');
+
+        try {
+          await this.sendRealAudioMessage(
+            conversationId,
+            audioFinal.mimeType,
+            audioFinal.base64,
+          );
+        } catch (err) {
+          console.error('❌ Error enviando audio a Kommo:', err);
+          return { success: false, type: 'audio-error' };
+        }
 
         return { success: true, type: 'audio' };
-      } catch (error) {
-        console.error('❌ Error al enviar audio real a Kommo:', error);
-        return { success: false, type: 'audio-error' };
       }
-    }
 
-    console.warn('⚠️ Contenido desconocido recibido:', content);
-    return { success: false, type: 'unknown' };
+      // Fallback
+      return { success: false, type: 'unknown' };
+    } catch (error) {
+      console.error('❌ Error en processAIMessage:', error);
+      return { success: false, type: 'fatal' };
+    }
   }
 
   // 🧩 Manejo del webhook

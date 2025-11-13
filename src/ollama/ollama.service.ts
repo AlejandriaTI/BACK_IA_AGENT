@@ -8,6 +8,7 @@ import { obtenerSessionId } from 'src/utils/session.util';
 import { Request as ExpressRequest } from 'express';
 import { ElevenlabsService } from 'src/elevenlabs/elevenlabs.service';
 import { systemPrompt } from 'src/lib/systemPrompt';
+import { KommoRequest } from './types/kommo.response';
 dotenv.config();
 
 // 🔑 Inicialización del cliente de OpenAI
@@ -218,7 +219,7 @@ export class OllamaService {
 
   // 🔹 Función principal del chat con control de presentación
   async chat(
-    reqOrPrompt: ExpressRequest | string,
+    reqOrPrompt: KommoRequest | ExpressRequest | string,
     promptOrSessionId: string,
     fileRecibido?: { name: string; mimeType: string },
   ): Promise<{
@@ -233,20 +234,24 @@ export class OllamaService {
         };
     registro: any;
   }> {
-    // 👇 Manejo de entrada dual (desde controller o desde Kommo)
     let prompt: string;
     let sessionId: string;
 
     if (typeof reqOrPrompt === 'string') {
-      // 🔹 Llamado desde Kommo → (prompt, sessionId)
+      // Forma antigua: (prompt, sessionId)
       prompt = reqOrPrompt;
       sessionId = promptOrSessionId;
+    } else if ('sessionId' in reqOrPrompt) {
+      // 🔹 Llamado desde KOMMO
+      prompt = promptOrSessionId;
+      sessionId = reqOrPrompt.sessionId;
     } else {
-      // 🔸 Llamado desde HTTP controller → (req, prompt)
+      // 🔸 Llamado desde controller HTTP normal
       const req = reqOrPrompt;
       prompt = promptOrSessionId;
       sessionId = obtenerSessionId(req);
     }
+
     try {
       const normalized = prompt.toLowerCase().trim();
 
@@ -586,7 +591,7 @@ export class OllamaService {
 
       // Si la respuesta es en auio,  formateamos para no devolver un buffer gigante en el webhook
       // ✅ --- AUDIO PARA KOMMON (20% probabilidad) ---
-      const debeHablar = Math.random() < 0.5;
+      const debeHablar = Math.random() < 0.0;
 
       if (debeHablar) {
         console.log('🎤 Generando audio para Kommon...');
