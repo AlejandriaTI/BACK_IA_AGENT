@@ -1,116 +1,83 @@
-import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { KommoService } from './kommo.service';
-import type { Response as ExpressResponse } from 'express';
-
-// ✅ Tipos reales del webhook de Kommo
-interface KommoIncomingMessage {
-  message?: {
-    text?: string;
-    text_original?: string;
-  };
-  conversation_id?: string | number;
-  lead_id?: string | number;
-  entity_id?: string | number;
-}
+import type {
+  KommoMessageAdd,
+  KommoWebhookBody,
+} from './config/ia.config.response';
 
 @Controller('kommo')
 export class KommoController {
   constructor(private readonly kommoService: KommoService) {}
-
-  @Get('authorize')
-  authorize(@Res() res: ExpressResponse): void {
-    const url =
-      'https://12348878.kommo.com/oauth2/authorize?client_id=6b1ad1dc-32ed-426e-9e60-874ab861ba83&redirect_uri=https://704e98cba053.ngrok-free.app/kommo/auth&response_type=code';
-
-    console.log('🔗 URL de autorización generada:', url);
-    res.redirect(url);
-  }
-
-  @Get('auth')
-  async authenticate(@Query('code') code: string) {
-    try {
-      console.log('✅ CODE recibido de Kommo:', code);
-
-      await this.kommoService.authenticate(code);
-
-      return `
-      <html>
-        <body style="font-family: sans-serif; padding: 40px;">
-          <h1>✅ Integración autorizada correctamente</h1>
-          <p>Ya podés cerrar esta pestaña.</p>
-        </body>
-      </html>
-      `;
-    } catch (error) {
-      console.error('❌ Error autenticando:', error);
-      return 'Error autenticando integración.';
-    }
-  }
 
   @Get('leads')
   getLeads(): Promise<any> {
     return this.kommoService.getLeads();
   }
 
-  // ✅ Webhook legacy
-  @Post('webhook')
-  async handleWebhook(@Body() body: any): Promise<any> {
-    return this.kommoService.handleWebhook(body);
+  @Get('test')
+  async testAccess(): Promise<any> {
+    return this.kommoService.testAccess();
   }
 
-  // ✅ Webhook para mensajes entrantes REAL
+  // 🟣 WEBHOOK REAL
   @Post('incoming')
-  async incomingFromKommo(@Body() body: KommoIncomingMessage): Promise<any> {
+  async incomingFromKommo(@Body() body: KommoWebhookBody): Promise<{
+    success: boolean;
+    result?: unknown;
+    error?: string;
+    ignored?: boolean;
+  }> {
     console.log('📩 Webhook de Kommo recibido:');
     console.log(JSON.stringify(body, null, 2));
 
     try {
-      // ✅ Tipado seguro (sin acceso inseguro a any)
-      const prompt = body.message?.text ?? body.message?.text_original ?? '';
+      const add: KommoMessageAdd | undefined = body.message?.add?.[0];
 
-      const conversationId = String(body.conversation_id ?? '');
-      const sessionId = conversationId || 'default';
+      if (!add) {
+        console.warn('⚠️ No es message.add, ignorando...');
+        return { success: true, ignored: true };
+      }
 
-      const leadId = Number(body.lead_id ?? body.entity_id ?? 0);
+      const prompt: string =
+        add.text?.trim() || add.text_original?.trim() || '';
+
+      const audioUrl: string | null =
+        add.attachment?.type === 'voice' ? add.attachment.link : null;
+
+      const conversationId: string = add.chat_id;
+      const leadId: number = Number(add.entity_id ?? add.element_id ?? 0);
+      const sessionId: string = conversationId || 'default';
 
       console.log('➡️ prompt:', prompt);
-      console.log('➡️ sessionId:', sessionId);
+      console.log('➡️ audioUrl:', audioUrl);
       console.log('➡️ conversationId:', conversationId);
       console.log('➡️ leadId:', leadId);
 
-      if (!prompt) {
-        console.error('❌ Error: mensaje entrante vacío.');
+      if (!prompt && !audioUrl) {
         return { success: false, error: 'Mensaje vacío' };
       }
 
       if (!conversationId) {
-        console.error('❌ Error: conversationId vacío.');
         return { success: false, error: 'conversationId faltante' };
       }
 
       if (!leadId) {
-        console.error('❌ Error: leadId vacío.');
-        return { success: false, error: 'LeadID faltante' };
+        return { success: false, error: 'leadId faltante' };
       }
 
-      // ✅ Llamada segura
+      const finalPrompt = prompt;
+
       const result = await this.kommoService.processAIMessage(
-        prompt,
+        finalPrompt,
         sessionId,
         conversationId,
         leadId,
       );
 
-      return {
-        success: true,
-        result,
-      };
+      return { success: true, result };
     } catch (error) {
-      console.error('❌ Error procesando mensaje de Kommo:', error);
-      return {
-        success: false,
-        error: (error as Error).message,
-      };
+      console.error('❌ Error procesando mensaje:', error);
+      return { success: false, error: (error as Error).message };
     }
   }
 }

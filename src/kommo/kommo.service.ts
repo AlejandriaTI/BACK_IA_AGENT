@@ -1,15 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import * as querystring from 'querystring';
 import { PIPELINES } from './config/pipeline.config';
 import { AIResponse } from './config/ia.config.response';
 import { OllamaService } from 'src/ollama/ollama.service';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import FormData from 'form-data';
 import { Buffer } from 'buffer';
-interface KommoAuthResponse {
-  access_token: string;
-  refresh_token: string;
-}
 
 interface KommoLeadResponse {
   id: number;
@@ -31,20 +26,18 @@ interface WebhookResponse {
 interface KommoFileUploadResponse {
   file_uuid: string;
 }
+interface KommoAccountResponse {
+  id: number;
+  name: string;
+}
 
 @Injectable()
 export class KommoService {
-  private readonly CLIENT_ID = process.env.KOMMO_CLIENT_ID;
-  private readonly CLIENT_SECRET = process.env.KOMMO_CLIENT_SECRET;
-  private readonly REDIRECT_URI = process.env.KOMMO_REDIRECT_URI;
   private readonly KOMMO_DOMAIN = process.env.KOMMO_SUBDOMAIN;
-
-  private readonly AUTH_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/oauth2/authorize`;
-  private readonly TOKEN_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/oauth2/access_token`;
   private readonly API_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/api/v4`;
 
-  private accessToken = '';
-  private refreshToken = '';
+  // 🔥 Token de larga duración (no expira por meses)
+  private readonly accessToken = process.env.KOMMO_KEY_DURATION;
 
   constructor(private readonly ollamaService: OllamaService) {}
 
@@ -61,24 +54,42 @@ export class KommoService {
     );
   }
 
-  // 🔐 Autenticación inicial OAuth2
-  async authenticate(code: string): Promise<void> {
-    const body = querystring.stringify({
-      client_id: this.CLIENT_ID,
-      client_secret: this.CLIENT_SECRET,
-      code,
-      redirect_uri: this.REDIRECT_URI,
-      grant_type: 'authorization_code',
-    });
+  async testAccess() {
+    const url = `https://${this.KOMMO_DOMAIN}.kommo.com/api/v4/account`;
 
-    const response: AxiosResponse<KommoAuthResponse> = await axios.post(
-      this.TOKEN_URL,
-      body,
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
+    try {
+      const response: AxiosResponse<KommoAccountResponse> = await axios.get(
+        url,
+        {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-    this.accessToken = response.data.access_token;
-    this.refreshToken = response.data.refresh_token;
+      return {
+        success: true,
+        message: 'ACCESO OK ✔',
+        account: response.data, // ya no es any
+      };
+    } catch (err) {
+      const error = err as AxiosError<unknown>;
+
+      if (axios.isAxiosError(error)) {
+        return {
+          success: false,
+          message: '❌ ERROR DE ACCESO',
+          error: error.response?.data ?? error.message,
+        };
+      }
+
+      return {
+        success: false,
+        message: '❌ ERROR NO CONTROLADO',
+        error: String(err),
+      };
+    }
   }
 
   // 🧾 Crear nota en un lead
@@ -168,23 +179,6 @@ export class KommoService {
   }
 
   // 🔁 Refrescar token
-  async refreshAccessToken(): Promise<void> {
-    const body = querystring.stringify({
-      client_id: this.CLIENT_ID,
-      client_secret: this.CLIENT_SECRET,
-      refresh_token: this.refreshToken,
-      grant_type: 'refresh_token',
-    });
-
-    const response: AxiosResponse<KommoAuthResponse> = await axios.post(
-      this.TOKEN_URL,
-      body,
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
-
-    this.accessToken = response.data.access_token;
-    this.refreshToken = response.data.refresh_token;
-  }
 
   // ✅ Enviar AUDIO REAL a Kommo (subir → obtener UUID → enviar)
   async sendRealAudioMessage(
@@ -259,40 +253,20 @@ export class KommoService {
 
   async moverSegunClasificacion(
     leadId: number,
-    tipo: 'FRIO' | 'TIBIO',
+    tipo: 'FRIO' | 'TIBIO' | 'COTIZACION' | 'MARKETING',
   ): Promise<void> {
-    const pipelineId = PIPELINES.ALEJANDRIA.ID;
+    const pipelineId = PIPELINES.PRUEBA.ID;
 
-    const statusId =
-      tipo === 'FRIO' ? PIPELINES.ALEJANDRIA.FRIO : PIPELINES.ALEJANDRIA.TIBIO;
+    const mapa: Record<string, number> = {
+      FRIO: PIPELINES.PRUEBA.FRIO,
+      TIBIO: PIPELINES.PRUEBA.TIBIO,
+      COTIZACION: PIPELINES.PRUEBA.COTIZACION,
+      MARKETING: PIPELINES.PRUEBA.MARKETING,
+    };
+
+    const statusId = mapa[tipo];
 
     await this.moveLeadToPipeline(String(leadId), pipelineId, statusId);
-  }
-
-  private clasificarLead(text: string): 'FRIO' | 'TIBIO' {
-    const t = text.toLowerCase();
-
-    const frio =
-      /solo estoy viendo|mas adelante|no tengo dinero|averiguando/i.test(t) ||
-      /cuando pueda|cuando junte/i.test(t) ||
-      (/precio|costo/.test(t) && !/tesis|universidad|carrera/.test(t));
-
-    if (frio) return 'FRIO';
-
-    const tibio =
-      /universidad|carrera|tesis|tsp/i.test(t) ||
-      /me interesa|quiero saber|como funciona/i.test(t) ||
-      /fecha|entrega|parcial|desde cero/i.test(t);
-
-    if (tibio) return 'TIBIO';
-
-    return 'FRIO';
-  }
-  // ✅ DETECTAR AGENDAMIENTO
-  private detectarAgendamiento(text: string): boolean {
-    return /(agendar|reunion|meet|zoom|llamada|podemos hablar)/i.test(
-      text.toLowerCase(),
-    );
   }
 
   async processAIMessage(
@@ -301,8 +275,15 @@ export class KommoService {
     conversationId: string,
     leadId: number,
   ): Promise<{ success: boolean; type: string }> {
-    let aiResp: AIResponse;
+    // 🔍 1) NO RESPONDER si tiene STOP (ANTES de llamar a IA)
+    const tieneStop = await this.hasStopTag(leadId);
+    if (tieneStop) {
+      console.log('⛔ Lead con STOP, no respondemos.');
+      return { success: true, type: 'ignored' };
+    }
 
+    // 2) Procesar con IA
+    let aiResp: AIResponse;
     try {
       aiResp = await this.ollamaService.chat(prompt, sessionId);
     } catch (err) {
@@ -311,23 +292,50 @@ export class KommoService {
     }
 
     const content = aiResp.content;
+    const tipoIA = aiResp.registro?.tipo;
 
-    // ✅ Clasificar lead
-    const tipo = this.clasificarLead(prompt);
+    // 3) Convertir tipo interno → pipeline comercial
+    let tipo: 'FRIO' | 'TIBIO' | 'COTIZACION' | 'MARKETING' = 'FRIO';
+
+    switch (tipoIA) {
+      case 'FRIO':
+        tipo = 'FRIO';
+        break;
+
+      case 'TIBIO':
+        tipo = 'TIBIO';
+        break;
+
+      case 'lead_educativo':
+        tipo = 'MARKETING';
+        break;
+
+      case 'trabajo_puntual':
+      case 'solicitud-documento-inmediata':
+      case 'solicitud-documento-cotizacion':
+        tipo = 'COTIZACION';
+        break;
+
+      default:
+        tipo = 'FRIO';
+        break;
+    }
+
+    // 4) Mover al pipeline una sola vez
     await this.moverSegunClasificacion(leadId, tipo);
 
-    // ✅ Detectar agendamiento
-    if (this.detectarAgendamiento(prompt)) {
+    // 5) Si DEJA DE SER FRÍO → poner STOP
+    if (tipo !== 'FRIO') {
+      console.log('🛑 El lead dejó de ser FRÍO. Agregando STOP...');
       await this.addStopTag(leadId);
     }
 
-    // ✅ Respuesta TEXTUAL
+    // 6) Crear mensaje según si es texto o audio
     if (typeof content === 'string') {
       await this.sendChatMessage(conversationId, `<p>${content}</p>`);
       return { success: true, type: 'text' };
     }
 
-    // ✅ AUDIO REAL (sin ESLint errors)
     if (this.isAudioContent(content)) {
       try {
         await this.sendRealAudioMessage(

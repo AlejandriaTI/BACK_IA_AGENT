@@ -98,7 +98,7 @@ export class OllamaService {
       if (!cliente.avance) {
         // 🚀 Empezando desde cero
         if (
-          /(desde cero|reci[eé]n empez|no tengo nada|sin avanzar|sin hacer|aún no empiezo|no he hecho nada)/i.test(
+          /(desde cero|reci[eé]n empez|no tengo nada|sin avanzar|sin hacer|aún no empiezo|no he hecho nada|mi avance|tiene que estar|debe estar listo|fin de mes)/i.test(
             texto,
           )
         ) {
@@ -524,7 +524,7 @@ export class OllamaService {
       );
 
       if (limpio.length > 180) {
-        await this.delay(1200);
+        await this.delay(3200);
       }
 
       // 💾 Guardar conversación
@@ -536,8 +536,47 @@ export class OllamaService {
         limpio,
         embeddingAsistente,
       );
+      const aceptaReunion =
+        /^sí(\b|,)/i.test(normalized) || // si la frase comienza con "sí"
+        /(?:^|\s)(si|sí)\s+(claro|perfecto|mañana|podría|podria|me parece|est[aá] bien|de acuerdo|coordinemos|agendemos|podemos|dale)/i.test(
+          normalized,
+        ) ||
+        /(claro|perfecto|ok|vale|dale|listo|suena bien|me parece bien|est[aá] bien|de acuerdo|mañana|podría ser|podria ser|hagámoslo|hagamoslo|coordinemos|agendemos)/i.test(
+          normalized,
+        );
+
+      // -----------------------------------------------------------
+      const botInvitoReunion =
+        /(agend(a|emos|ar|áramos)|coordinar|coordinemos|program(ar|emos)|organizar|reservar)\s+(una\s+)?reuni[oó]n/i.test(
+          limpio,
+        ) ||
+        /(reuni[oó]n\s+breve|reuni[oó]n\s+por\s+meet|meet|zoom|google\s+meet)/i.test(
+          limpio,
+        ) ||
+        /(te\s+enviar[áa]\s+el\s+enlace|te\s+pas[oó]\s+el\s+enlace|te\s+mand[oó]\s+el\s+link)/i.test(
+          limpio,
+        ) ||
+        /(quieres|gustar[ií]a|podemos|deber[ií]amos)\s+(que\s+)?(agendar|coordinar|programar)\s+(una\s+)?reuni[oó]n/i.test(
+          limpio,
+        );
+
+      const datosCompletos =
+        datosCliente.universidad && datosCliente.carrera && datosCliente.avance;
+      // Tipo del lead inicial
+      let tipoLead: 'FRIO' | 'TIBIO' = 'FRIO';
+
+      if (fileRecibido && isCalificado) {
+        tipoLead = 'TIBIO';
+      } else if (aceptaReunion) {
+        tipoLead = 'TIBIO';
+      } else if (botInvitoReunion) {
+        tipoLead = 'TIBIO';
+      } else if (datosCompletos) {
+        tipoLead = 'TIBIO';
+      }
 
       const registroCliente = {
+        tipo: tipoLead,
         etapa: 'interesado',
         fecha: Date.now(),
         sessionId,
