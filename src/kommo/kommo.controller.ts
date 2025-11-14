@@ -19,6 +19,43 @@ export class KommoController {
     return this.kommoService.testAccess();
   }
 
+  @Post('responder')
+  async responderDesdeSalesbot(
+    @Body()
+    body: {
+      text: string;
+      lead_id: number;
+      conversation_id: string;
+    },
+  ): Promise<{ text: string }> {
+    const { text, lead_id, conversation_id } = body;
+
+    if (!text || !lead_id || !conversation_id) {
+      console.warn('❌ Faltan parámetros necesarios');
+      return { text: 'No se pudo procesar tu mensaje en este momento.' };
+    }
+
+    const sessionId = conversation_id;
+
+    const result = await this.kommoService.processAIMessage(
+      text,
+      sessionId,
+      conversation_id,
+      lead_id,
+    );
+    const respuestaFinal = (
+      result as {
+        success: boolean;
+        type: string;
+        respuestaFinal?: string;
+      }
+    ).respuestaFinal;
+
+    return {
+      text: respuestaFinal ?? 'Disculpa, no pude procesar tu solicitud.',
+    };
+  }
+
   // 🟣 WEBHOOK REAL
   @Post('incoming')
   async incomingFromKommo(@Body() body: KommoWebhookBody): Promise<{

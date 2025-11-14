@@ -147,7 +147,7 @@ export class KommoService {
 
       console.log('➡️ Moviendo lead con:', payload);
 
-      const res = await axios.patch(`${this.API_URL}/api/v4/leads`, payload, {
+      const res = await axios.patch(`${this.API_URL}/leads`, payload, {
         headers: this.headers,
       });
 
@@ -186,9 +186,6 @@ export class KommoService {
     });
     return response.data;
   }
-
-  // 🔁 Refrescar token
-
   // ✅ Enviar AUDIO REAL a Kommo (subir → obtener UUID → enviar)
   async sendRealAudioMessage(
     conversationId: string,
@@ -312,9 +309,6 @@ export class KommoService {
       const { content, registro } = aiResp;
       const tipoIA = registro?.tipo;
 
-      // ------------------------------------------------------------------
-      // 3) Normalizar contenido → TEXTO o AUDIO
-      // ------------------------------------------------------------------
       let textoFinal: string | null = null;
       let audioFinal: { mimeType: string; base64: string } | null = null;
 
@@ -347,9 +341,6 @@ export class KommoService {
         return { success: false, type: 'empty' };
       }
 
-      // ------------------------------------------------------------------
-      // 4) Clasificar lead
-      // ------------------------------------------------------------------
       let tipoPipeline: 'FRIO' | 'TIBIO' | 'COTIZACION' | 'MARKETING' = 'FRIO';
 
       switch (tipoIA) {
@@ -375,12 +366,6 @@ export class KommoService {
         console.log('🛑 El lead dejó de ser FRÍO → agregando STOP');
         await this.addStopTag(leadId);
       }
-
-      // ------------------------------------------------------------------
-      // 5) Enviar mensaje a Kommo
-      // ------------------------------------------------------------------
-
-      // A) Si hay texto → siempre se envía primero
       if (textoFinal) {
         console.log('💬 Enviando MENSAJE DE TEXTO a Kommo:', textoFinal);
 
@@ -436,6 +421,40 @@ export class KommoService {
     }
   }
 
+  // 🤖 Enviar mensaje vía Salesbot a conversación activa
+  async sendViaSalesbot(
+    conversationId: string,
+    message: string,
+  ): Promise<void> {
+    const url = `${this.API_URL}/salesbot/send`;
+
+    const body = {
+      conversation_id: conversationId,
+      message: {
+        type: 'text',
+        text: message,
+      },
+    };
+
+    try {
+      const res = await axios.post(url, body, {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('✅ Mensaje enviado vía Salesbot:', res.data);
+    } catch (err) {
+      const error = err as AxiosError;
+      console.error(
+        '❌ Error al enviar mensaje vía Salesbot:',
+        error.response?.data ?? error.message,
+      );
+      throw error;
+    }
+  }
+
   // 🧩 Manejo del webhook
   async handleWebhook(data: WebhookBody): Promise<WebhookResponse> {
     console.log('📩 Webhook recibido:', data);
@@ -485,12 +504,6 @@ export class KommoService {
         throw new Error('Error desconocido al agregar etiqueta STOP');
       }
     }
-  }
-
-  async deleteLead(leadId: number): Promise<void> {
-    await axios.delete(`${this.API_URL}/leads/${leadId}`, {
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-    });
   }
 
   // 💾 Simulación de guardado de datos
