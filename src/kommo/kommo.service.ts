@@ -49,19 +49,6 @@ export class KommoService {
     };
   }
 
-  private isAudioContent(
-    content: unknown,
-  ): content is { isAudio: true; mimeType: string; base64: string } {
-    return (
-      typeof content === 'object' &&
-      content !== null &&
-      'isAudio' in content &&
-      (content as { isAudio: unknown }).isAudio === true &&
-      'mimeType' in content &&
-      'base64' in content
-    );
-  }
-
   async testAccess() {
     const url = `https://${this.KOMMO_DOMAIN}.kommo.com/api/v4/account`;
 
@@ -282,18 +269,12 @@ export class KommoService {
     leadId: number,
   ): Promise<{ success: boolean; type: string }> {
     try {
-      // ------------------------------------------------------------------
-      // 1) Verificar STOP
-      // ------------------------------------------------------------------
       const tieneStop = await this.hasStopTag(leadId);
       if (tieneStop) {
         console.log(`⛔ Lead ${leadId} tiene STOP, no respondemos.`);
         return { success: true, type: 'ignored' };
       }
 
-      // ------------------------------------------------------------------
-      // 2) Llamar a la IA
-      // ------------------------------------------------------------------
       const aiResp: AIResponse = await this.ollamaService.chat(
         {
           sessionId,
