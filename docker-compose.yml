@@ -18,12 +18,9 @@ services:
       - '3000:3000'
     depends_on:
       - redis
-    volumes:
-      - .:/usr/src/app # Monta el código fuente local
-      - /usr/src/app/node_modules # Evita sobreescribir dependencias del contenedor
     env_file:
       - .env
-    command: npm run start:dev
+    command: ['node', 'dist/main.js'] # <--- MUY IMPORTANTE
     networks:
       - app-network
 

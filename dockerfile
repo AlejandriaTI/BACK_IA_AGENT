@@ -1,17 +1,24 @@
-# Imagen base
-FROM node:20-slim
+# Stage 1: Build
+FROM node:20-slim AS builder
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copiá solo package.json primero
 COPY package*.json ./
+RUN npm install
 
-# Instalá dependencias con cache persistente
-RUN npm ci
-
-# Copiá el resto del proyecto
 COPY . .
+RUN npm run build
+
+# Stage 2: Production
+FROM node:20-slim AS production
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install --only=production
+
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:dev"]
+CMD ["node", "dist/main.js"]
