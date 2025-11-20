@@ -1,98 +1,103 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🤖 Agente IA - Alexandria AI
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Este proyecto es un **Agente de Inteligencia Artificial** desarrollado con **NestJS** que automatiza la interacción con clientes a través de **Kommo CRM**. Utiliza modelos de lenguaje avanzados (OpenAI GPT-4o) y síntesis de voz (ElevenLabs) para ofrecer una experiencia de asesoría académica personalizada.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 🚀 Características Principales
 
-## Description
+- **Integración con Kommo CRM**:
+  - Gestión automática de leads y pipelines (Frío, Tibio, Cotización, Marketing).
+  - Sincronización de mensajes de texto y audio.
+  - Etiquetado automático de leads (ej. `STOP` si el lead no es viable).
+- **Inteligencia Artificial Conversacional**:
+  - Motor basado en **OpenAI (GPT-4o)** para entender y responder consultas.
+  - Detección de intención (ej. solicitud de cotización, interés educativo, trabajo puntual).
+  - Memoria contextual utilizando **Supabase** y embeddings vectoriales.
+- **Capacidades de Voz (ElevenLabs)**:
+  - **Text-to-Speech (TTS)**: Generación de respuestas de audio naturales.
+  - **Speech-to-Text (STT)**: Transcripción de mensajes de audio recibidos.
+- **Procesamiento en Segundo Plano**:
+  - Uso de **BullMQ** y **Redis** para manejar colas de procesamiento de IA y tareas pesadas.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 🛠️ Stack Tecnológico
 
-## Project setup
+- **Framework**: [NestJS](https://nestjs.com/)
+- **Lenguaje**: TypeScript
+- **IA / LLM**: OpenAI API (GPT-4o)
+- **Voz**: ElevenLabs API
+- **Base de Datos**: Supabase (PostgreSQL + pgvector)
+- **Colas**: BullMQ + Redis
+- **CRM**: Kommo (anteriormente AmoCRM)
+
+## 📋 Prerrequisitos
+
+Antes de ejecutar el proyecto, asegúrate de tener instalado:
+
+- [Node.js](https://nodejs.org/) (v18 o superior)
+- [Redis](https://redis.io/) (necesario para las colas de BullMQ)
+- Una cuenta y proyecto en [Supabase](https://supabase.com/)
+- Claves de API para OpenAI, ElevenLabs y Kommo.
+
+## ⚙️ Configuración de Variables de Entorno
+
+Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
+
+```env
+# 🧠 OpenAI
+OPENAI_API_KEY=sk-...
+
+# 🗄️ Supabase (Base de datos y Embeddings)
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_KEY=tu-anon-key
+
+# 🤝 Kommo CRM
+KOMMO_SUBDOMAIN=tu-subdominio
+KOMMO_KEY_DURATION=tu-token-de-larga-duracion
+
+# 🗣️ ElevenLabs (Voz)
+ELEVENLABS_API_KEY_TTS=tu-api-key-tts
+ELEVENLABS_API_KEY_STT=tu-api-key-stt
+ELEVENLABS_API_URL=https://api.elevenlabs.io/v1
+ELEVENLABS_VOICE_ID=oYBnOnwnfG6w5YK4xE3C
+
+# ⚡ Redis (Colas)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+```
+
+## 📦 Instalación
 
 ```bash
 $ npm install
 ```
 
-## Compile and run the project
+## ▶️ Ejecución
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
+# Modo desarrollo
 $ npm run start:dev
 
-# production mode
+# Modo producción
 $ npm run start:prod
 ```
 
-## Run tests
+## 📂 Estructura del Proyecto
+
+- `src/kommo`: Servicios y controladores para la integración con la API de Kommo. Maneja webhooks y sincronización de leads.
+- `src/ollama`: (Nombre legado) Contiene la lógica principal de IA, integración con OpenAI, gestión de prompts y memoria con Supabase.
+- `src/elevenlabs`: Servicios para la conversión de texto a voz y viceversa.
+- `src/config`: Configuraciones globales (ej. BullMQ).
+- `src/lib`: Utilidades y prompts del sistema.
+
+## 🧪 Tests
 
 ```bash
-# unit tests
+# Unit tests
 $ npm run test
 
-# e2e tests
+# E2E tests
 $ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
 ```
 
-## Deployment
+## 📄 Licencia
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Este proyecto es privado y propietario.
