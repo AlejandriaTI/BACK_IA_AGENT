@@ -5,6 +5,8 @@ import { OllamaService } from 'src/ollama/ollama.service';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import FormData from 'form-data';
 import { Buffer } from 'buffer';
+import * as crypto from 'crypto';
+import { KommoRequest } from '../ollama/types/kommo.response';
 
 interface KommoLeadResponse {
   id: number;
@@ -18,6 +20,12 @@ interface WebhookBody {
   status: string;
   [key: string]: any;
 }
+interface KommoLead {
+  id: number;
+  pipeline_id: number;
+  status_id: number;
+  [key: string]: unknown;
+}
 
 interface WebhookResponse {
   success: boolean;
@@ -29,6 +37,14 @@ interface KommoFileUploadResponse {
 interface KommoAccountResponse {
   id: number;
   name: string;
+}
+
+interface ConnectChannelResponse {
+  account_id: string;
+  scope_id: string;
+  title: string;
+  hook_api_version: string;
+  is_time_window_disabled: boolean;
 }
 
 @Injectable()
@@ -47,6 +63,71 @@ export class KommoService {
       Authorization: `Bearer ${process.env.KOMMO_KEY_DURATION}`,
       'Content-Type': 'application/json',
     };
+  }
+  async connectChannel(): Promise<ConnectChannelResponse> {
+    const channelId = '0c407327-bf9e-48b4-ae84-bbc646f4ca4d';
+    const secret = 'fddada3260991dce2648c58f848824db1d2b452d';
+
+    // 👉 ORDEN ALFABÉTICO OBLIGATORIO
+    const body = {
+      account_id: '80e096d0-da4d-425d-956e-9f51bd729816',
+      hook_api_version: 'v2',
+      is_time_window_disabled: true,
+      title: 'Alexandria AI',
+    };
+
+    const bodyString = JSON.stringify(body);
+
+    // 👉 MD5 EXACTO DEL BODY ORDENADO
+    const contentMD5 = crypto
+      .createHash('md5')
+      .update(bodyString, 'utf8')
+      .digest('base64');
+
+    const date = new Date().toUTCString();
+
+    // 👉 STRING-TO-SIGN EXACTO
+    const stringToSign = `${date}\n${contentMD5}\napplication/json;charset=utf-8`;
+
+    // 👉 FIRMA EXACTA
+    const signature = crypto
+      .createHmac('sha1', secret)
+      .update(stringToSign, 'utf8')
+      .digest('base64');
+
+    const headers = {
+      'Content-Type': 'application/json;charset=utf-8',
+      'Content-MD5': contentMD5,
+      'X-Signature': signature,
+      Date: date,
+      'Content-Length': Buffer.byteLength(bodyString).toString(),
+    };
+
+    console.log('📦 BODY STRING =>', bodyString);
+    console.log('🔸 Content-MD5 =>', contentMD5);
+    console.log('📅 Date =>', date);
+    console.log('🧾 String-To-Sign =>', JSON.stringify(stringToSign));
+    console.log('🔑 Signature =>', signature);
+    console.log('🧩 Headers =>', headers);
+
+    const url = `https://amojo.kommo.com/v2/origin/custom/${channelId}/connect`;
+
+    try {
+      const res = await axios.post(url, bodyString, {
+        headers,
+        transformRequest: (d: unknown) => d, // no tocar body
+        timeout: 8000,
+        validateStatus: () => true,
+      });
+
+      console.log('📨 RAW RESPONSE STATUS =>', res.status);
+      console.log('📨 RAW RESPONSE DATA =>', res.data);
+
+      return res.data as ConnectChannelResponse;
+    } catch (error) {
+      console.error('❌ ERROR AXIOS =>', error);
+      throw error;
+    }
   }
 
   async testAccess() {
@@ -262,6 +343,16 @@ export class KommoService {
     await this.moveLeadToPipeline(Number(leadId), pipelineId, statusId);
   }
 
+  async getLeadById(leadId: number): Promise<KommoLead> {
+    const url = `${this.API_URL}/leads/${leadId}`;
+
+    const res = await axios.get<KommoLead>(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+
+    return res.data;
+  }
+
   async processAIMessage(
     prompt: string,
     sessionId: string,
@@ -281,7 +372,7 @@ export class KommoService {
           kommo: true,
           conversationId,
           leadId,
-        } as any,
+        } as KommoRequest,
         prompt,
       );
 

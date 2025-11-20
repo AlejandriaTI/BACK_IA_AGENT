@@ -4,10 +4,16 @@ import type {
   KommoMessageAdd,
   KommoWebhookBody,
 } from './config/ia.config.response';
+import { PIPELINES } from './config/pipeline.config';
 
 @Controller('kommo')
 export class KommoController {
   constructor(private readonly kommoService: KommoService) {}
+
+  @Get('connect-channel')
+  connectChannel(): Promise<any> {
+    return this.kommoService.connectChannel();
+  }
 
   @Get('leads')
   getLeads(): Promise<any> {
@@ -23,7 +29,6 @@ export class KommoController {
   @Post('incoming/:scope_id')
   async incomingFromKommo(
     @Param('scope_id') scopeId: string,
-
     @Body() body: KommoWebhookBody,
   ): Promise<{
     success: boolean;
@@ -52,11 +57,6 @@ export class KommoController {
       const leadId: number = Number(add.entity_id ?? add.element_id ?? 0);
       const sessionId: string = conversationId || 'default';
 
-      console.log('➡️ prompt:', prompt);
-      console.log('➡️ audioUrl:', audioUrl);
-      console.log('➡️ conversationId:', conversationId);
-      console.log('➡️ leadId:', leadId);
-
       if (!prompt && !audioUrl) {
         return { success: false, error: 'Mensaje vacío' };
       }
@@ -69,10 +69,23 @@ export class KommoController {
         return { success: false, error: 'leadId faltante' };
       }
 
-      const finalPrompt = prompt;
+      // 🟣 1. Obtener información del lead para conocer su pipeline real
+      const lead = await this.kommoService.getLeadById(leadId);
+      const pipelineId = lead.pipeline_id;
 
+      // 🟣 2. Filtro por embudo PRUEBA
+      const PIPELINE_PRUEBA_ID = PIPELINES.PRUEBA.ID;
+
+      if (pipelineId !== PIPELINE_PRUEBA_ID) {
+        console.log(
+          `🔕 Lead ${leadId} NO está en el embudo PRUEBA. Ignorando mensaje.`,
+        );
+        return { success: true, ignored: true };
+      }
+
+      // 🧠 IA solo responde si pertenece al embudo PRUEBA
       const result = await this.kommoService.processAIMessage(
-        finalPrompt,
+        prompt,
         sessionId,
         conversationId,
         leadId,
