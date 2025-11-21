@@ -246,7 +246,6 @@ export class KommoService {
     }
   }
 
-  // 🧾 Crear nota en un lead
   async createNoteForLead(leadId: string, text: string): Promise<unknown> {
     if (!this.accessToken) throw new Error('Token no disponible.');
 
@@ -309,7 +308,6 @@ export class KommoService {
     }
   }
 
-  // 🏷️ Verificar si el lead tiene STOP
   async hasStopTag(leadId: number): Promise<boolean> {
     const response: AxiosResponse<KommoLeadResponse> = await axios.get(
       `${this.API_URL}/leads/${leadId}`,
@@ -325,7 +323,6 @@ export class KommoService {
     return hasStop;
   }
 
-  // 📋 Obtener leads
   async getLeads(): Promise<unknown> {
     const response = await axios.get(`${this.API_URL}/leads`, {
       headers: { Authorization: `Bearer ${this.accessToken}` },
@@ -333,7 +330,6 @@ export class KommoService {
     return response.data;
   }
 
-  // ✅ Enviar AUDIO REAL a Kommo (subir → obtener UUID → enviar)
   async sendRealAudioMessage(
     conversationId: string,
     mimeType: string,
@@ -553,7 +549,6 @@ export class KommoService {
     }
   }
 
-  // 🧩 Manejo del webhook
   async handleWebhook(data: WebhookBody): Promise<WebhookResponse> {
     console.log('📩 Webhook recibido:', data);
     await this.saveLeadData(data);
@@ -604,7 +599,6 @@ export class KommoService {
     }
   }
 
-  // 💾 Simulación de guardado de datos
   private async saveLeadData(data: unknown): Promise<void> {
     console.log('💾 Guardando lead...', data);
     return new Promise((resolve) => setTimeout(resolve, 1000));
