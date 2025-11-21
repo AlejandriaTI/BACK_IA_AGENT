@@ -103,7 +103,7 @@ export class KommoService {
         msgid,
         conversation_id: conversationId,
         sender: {
-          id: 'my_int-alexandria-bot',
+          id: 'my_int-XXXXXXXXXXXX', // ✔️ ORIGIN USER REAL
           name: 'Alexandria AI',
           ref_id: '16e311b0-a810-4043-a53f-f2522608bef5', // <--- el ID del bot que Kommo generó
         },
