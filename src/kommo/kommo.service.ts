@@ -84,9 +84,58 @@ export class KommoService {
     };
   }
 
-  /**
-   * Creates authentication headers for Amojo API requests
-   */
+  async sendChatMessage(conversationId: string, text: string): Promise<void> {
+    // Usamos la API de Chats (Amojo) para enviar el mensaje
+    const method = 'POST';
+    const path = `/v2/origin/custom/${this.channelId}_${this.accountId}`;
+    const url = `https://amojo.kommo.com${path}`;
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const msec_timestamp = Date.now();
+    const msgid = crypto.randomUUID();
+
+    const body = {
+      event_type: 'new_message',
+      payload: {
+        silent: true,
+        timestamp,
+        msec_timestamp,
+        msgid,
+        conversation_id: conversationId,
+        sender: {
+          id: 'my_int-alexandria-bot',
+          name: 'Alexandria AI',
+          ref_id: '16e311b0-a810-4043-a53f-f2522608bef5', // <--- el ID del bot que Kommo generó
+        },
+        message: {
+          type: 'text',
+          text: text.replace(/<[^>]*>?/gm, ''), // Limpiar HTML si viene
+        },
+      },
+    };
+
+    const bodyString = JSON.stringify(body);
+    const headers = this.createAmojoHeaders(method, path, bodyString);
+
+    console.log('💬 Enviando mensaje a Amojo:', url);
+
+    try {
+      const res = await axios.post(url, bodyString, {
+        headers,
+        transformRequest: (d: unknown) => d,
+      });
+
+      console.log('✅ Mensaje enviado a Amojo. Status:', res.status);
+    } catch (err) {
+      const error = err as AxiosError;
+      console.error(
+        '❌ Error enviando mensaje a Amojo:',
+        error.response?.data ?? error.message,
+      );
+      throw error;
+    }
+  }
+
   private createAmojoHeaders(
     method: string,
     path: string,
@@ -333,56 +382,6 @@ export class KommoService {
     });
 
     console.log('✅ Audio enviado a Kommo como mensaje real');
-  }
-
-  async sendChatMessage(conversationId: string, text: string): Promise<void> {
-    // Usamos la API de Chats (Amojo) para enviar el mensaje
-    const method = 'POST';
-    const path = `/v2/origin/custom/${this.channelId}_${this.accountId}`;
-    const url = `https://amojo.kommo.com${path}`;
-
-    const timestamp = Math.floor(Date.now() / 1000);
-    const msec_timestamp = Date.now();
-    const msgid = crypto.randomUUID();
-
-    const body = {
-      event_type: 'new_message',
-      payload: {
-        timestamp,
-        msec_timestamp,
-        msgid,
-        conversation_id: conversationId,
-        sender: {
-          name: 'Alexandria AI',
-          ref_id: this.accountId, // Mismo account_id que en connect
-        },
-        message: {
-          type: 'text',
-          text: text.replace(/<[^>]*>?/gm, ''), // Limpiar HTML si viene
-        },
-      },
-    };
-
-    const bodyString = JSON.stringify(body);
-    const headers = this.createAmojoHeaders(method, path, bodyString);
-
-    console.log('💬 Enviando mensaje a Amojo:', url);
-
-    try {
-      const res = await axios.post(url, bodyString, {
-        headers,
-        transformRequest: (d: unknown) => d,
-      });
-
-      console.log('✅ Mensaje enviado a Amojo. Status:', res.status);
-    } catch (err) {
-      const error = err as AxiosError;
-      console.error(
-        '❌ Error enviando mensaje a Amojo:',
-        error.response?.data ?? error.message,
-      );
-      throw error;
-    }
   }
 
   async moverSegunClasificacion(
