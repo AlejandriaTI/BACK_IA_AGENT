@@ -7,14 +7,14 @@ async function bootstrap() {
   // ✅ CORS configurado correctamente
   app.enableCors({
     origin: [
-      'http://localhost:3000', // Next.js local
-      'http://localhost:3001', // Next.js local
+      'http://localhost:3000',
+      'http://localhost:3001',
       'http://127.0.0.1:3000',
       'https://chat-ui-prueba-ggpldka9x-ti-sistemas-projects.vercel.app',
-      'http://localhost:5173', // Vite
+      'http://localhost:5173',
       'https://chat-ui-prueba.vercel.app',
       'http://localhost:4173',
-      'http://localhost:19006', // Expo/React Native
+      'http://localhost:19006',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
