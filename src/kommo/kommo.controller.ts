@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Param, Post } from '@nestjs/common';
 import { KommoService } from './kommo.service';
 import type {
   KommoMessageAdd,
@@ -10,23 +10,8 @@ import { PIPELINES } from './config/pipeline.config';
 export class KommoController {
   constructor(private readonly kommoService: KommoService) {}
 
-  @Get('connect-channel')
-  connectChannel(): Promise<any> {
-    return this.kommoService.connectChannel();
-  }
-
-  @Get('leads')
-  getLeads(): Promise<any> {
-    return this.kommoService.getLeads();
-  }
-
-  @Get('test')
-  async testAccess(): Promise<any> {
-    return this.kommoService.testAccess();
-  }
-
   // 🟣 WEBHOOK REAL
-  @Post('incoming/:scope_id')
+  @Post(['incoming', 'incoming/:scope_id'])
   async incomingFromKommo(
     @Param('scope_id') scopeId: string,
     @Body() body: KommoWebhookBody,
@@ -70,17 +55,47 @@ export class KommoController {
       }
 
       // 🟣 1. Obtener información del lead para conocer su pipeline real
+      console.log(`🔍 Buscando lead ${leadId} en Kommo...`);
       const lead = await this.kommoService.getLeadById(leadId);
+      console.log(
+        '📄 Datos del lead recibidos:',
+        JSON.stringify(lead, null, 2),
+      );
+
       const pipelineId = lead.pipeline_id;
 
       // 🟣 2. Filtro por embudo PRUEBA
       const PIPELINE_PRUEBA_ID = PIPELINES.PRUEBA.ID;
+      console.log(
+        `⚙️ Pipeline ID del Lead: ${pipelineId} | Esperado: ${PIPELINE_PRUEBA_ID}`,
+      );
 
       if (pipelineId !== PIPELINE_PRUEBA_ID) {
         console.log(
           `🔕 Lead ${leadId} NO está en el embudo PRUEBA. Ignorando mensaje.`,
         );
         return { success: true, ignored: true };
+      }
+
+      const expectedScopeId = process.env.KOMMO_SCOPE_ID;
+
+      // ⚠️ Fix: Allow ':scope_id' literal which might come from misconfiguration, to avoid blocking.
+      if (
+        scopeId &&
+        scopeId !== ':scope_id' &&
+        expectedScopeId &&
+        scopeId !== expectedScopeId
+      ) {
+        console.warn(
+          `⛔ Webhook rechazado: scope_id inválido (${scopeId}) vs esperado (${expectedScopeId})`,
+        );
+        return { success: false, error: 'Scope ID inválido' };
+      }
+
+      if (scopeId === ':scope_id') {
+        console.warn(
+          '⚠️ Webhook recibido con scope_id literal ":scope_id". Verifique la configuración del webhook en Kommo.',
+        );
       }
 
       // 🧠 IA solo responde si pertenece al embudo PRUEBA

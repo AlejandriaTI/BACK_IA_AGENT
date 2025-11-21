@@ -20,6 +20,7 @@ interface WebhookBody {
   status: string;
   [key: string]: any;
 }
+
 interface KommoLead {
   id: number;
   pipeline_id: number;
@@ -31,9 +32,11 @@ interface WebhookResponse {
   success: boolean;
   message?: string;
 }
+
 interface KommoFileUploadResponse {
   file_uuid: string;
 }
+
 interface KommoAccountResponse {
   id: number;
   name: string;
@@ -56,61 +59,87 @@ export class KommoService {
   private readonly accessToken = process.env.KOMMO_KEY_DURATION;
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
+
+  // Amojo Channel Config
+  private readonly channelId = '0c407327-bf9e-48b4-ae84-bbc646f4ca4d';
+  private readonly secret = 'fddada3260991dce2648c58f848824db1d2b452d';
+  private readonly accountId = '80e096d0-da4d-425d-956e-9f51bd729816';
+
   constructor(private readonly ollamaService: OllamaService) {
     this.baseUrl = `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com`;
+
+    if (!process.env.KOMMO_SUBDOMAIN) {
+      console.error('❌ ERROR: KOMMO_SUBDOMAIN no está definido en .env');
+    }
+
+    if (!process.env.KOMMO_KEY_DURATION) {
+      console.error('❌ ERROR: KOMMO_KEY_DURATION no está definido en .env');
+    }
+
+    console.log('🔌 KommoService inicializado con API URL:', this.API_URL);
 
     this.headers = {
       Authorization: `Bearer ${process.env.KOMMO_KEY_DURATION}`,
       'Content-Type': 'application/json',
     };
   }
-  async connectChannel(): Promise<ConnectChannelResponse> {
-    const channelId = '0c407327-bf9e-48b4-ae84-bbc646f4ca4d';
-    const secret = 'fddada3260991dce2648c58f848824db1d2b452d';
 
-    // 👉 ORDEN ALFABÉTICO OBLIGATORIO
+  /**
+   * Creates authentication headers for Amojo API requests
+   */
+  private createAmojoHeaders(
+    method: string,
+    path: string,
+    bodyString: string,
+  ): Record<string, string> {
+    const contentMD5 = crypto
+      .createHash('md5')
+      .update(bodyString, 'utf8')
+      .digest('hex')
+      .toLowerCase();
+
+    const date = new Date().toUTCString();
+    const contentType = 'application/json';
+
+    // Order: Method, MD5, Content-Type, Date, Path
+    const stringToSign = [method, contentMD5, contentType, date, path].join(
+      '\n',
+    );
+
+    const signature = crypto
+      .createHmac('sha1', this.secret)
+      .update(stringToSign, 'utf8')
+      .digest('hex'); // Lowercase hex
+
+    return {
+      'Content-Type': contentType,
+      'Content-MD5': contentMD5,
+      'X-Signature': signature,
+      Date: date,
+    };
+  }
+
+  async connectChannel(): Promise<ConnectChannelResponse> {
+    const method = 'POST';
+    const path = `/v2/origin/custom/${this.channelId}/connect`;
+
     const body = {
-      account_id: '80e096d0-da4d-425d-956e-9f51bd729816',
+      account_id: this.accountId,
       hook_api_version: 'v2',
       is_time_window_disabled: true,
       title: 'Alexandria AI',
     };
 
     const bodyString = JSON.stringify(body);
-
-    // 👉 MD5 EXACTO DEL BODY ORDENADO
-    const contentMD5 = crypto
-      .createHash('md5')
-      .update(bodyString, 'utf8')
-      .digest('base64');
-
-    const date = new Date().toUTCString();
-
-    // 👉 STRING-TO-SIGN EXACTO
-    const stringToSign = `${date}\n${contentMD5}\napplication/json;charset=utf-8`;
-
-    // 👉 FIRMA EXACTA
-    const signature = crypto
-      .createHmac('sha1', secret)
-      .update(stringToSign, 'utf8')
-      .digest('base64');
-
-    const headers = {
-      'Content-Type': 'application/json;charset=utf-8',
-      'Content-MD5': contentMD5,
-      'X-Signature': signature,
-      Date: date,
-      'Content-Length': Buffer.byteLength(bodyString).toString(),
-    };
+    const headers = this.createAmojoHeaders(method, path, bodyString);
 
     console.log('📦 BODY STRING =>', bodyString);
-    console.log('🔸 Content-MD5 =>', contentMD5);
-    console.log('📅 Date =>', date);
-    console.log('🧾 String-To-Sign =>', JSON.stringify(stringToSign));
-    console.log('🔑 Signature =>', signature);
+    console.log('🔸 Content-MD5 =>', headers['Content-MD5']);
+    console.log('📅 Date =>', headers['Date']);
+    console.log('🔑 Signature =>', headers['X-Signature']);
     console.log('🧩 Headers =>', headers);
 
-    const url = `https://amojo.kommo.com/v2/origin/custom/${channelId}/connect`;
+    const url = `https://amojo.kommo.com${path}`;
 
     try {
       const res = await axios.post(url, bodyString, {
@@ -147,7 +176,7 @@ export class KommoService {
       return {
         success: true,
         message: 'ACCESO OK ✔',
-        account: response.data, // ya no es any
+        account: response.data,
       };
     } catch (err) {
       const error = err as AxiosError<unknown>;
@@ -254,6 +283,7 @@ export class KommoService {
     });
     return response.data;
   }
+
   // ✅ Enviar AUDIO REAL a Kommo (subir → obtener UUID → enviar)
   async sendRealAudioMessage(
     conversationId: string,
@@ -304,25 +334,55 @@ export class KommoService {
 
     console.log('✅ Audio enviado a Kommo como mensaje real');
   }
-  async sendChatMessage(conversationId: string, html: string): Promise<void> {
-    const url = `${this.API_URL}/chats/messages`;
+
+  async sendChatMessage(conversationId: string, text: string): Promise<void> {
+    // Usamos la API de Chats (Amojo) para enviar el mensaje
+    const method = 'POST';
+    const path = `/v2/origin/custom/${this.channelId}_${this.accountId}`;
+    const url = `https://amojo.kommo.com${path}`;
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const msec_timestamp = Date.now();
+    const msgid = crypto.randomUUID();
 
     const body = {
-      message: {
-        type: 'rich_text',
-        text: html,
+      event_type: 'new_message',
+      payload: {
+        timestamp,
+        msec_timestamp,
+        msgid,
+        conversation_id: conversationId,
+        sender: {
+          name: 'Alexandria AI',
+          ref_id: this.accountId, // Mismo account_id que en connect
+        },
+        message: {
+          type: 'text',
+          text: text.replace(/<[^>]*>?/gm, ''), // Limpiar HTML si viene
+        },
       },
-      conversation_id: conversationId,
     };
 
-    await axios.post(url, body, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const bodyString = JSON.stringify(body);
+    const headers = this.createAmojoHeaders(method, path, bodyString);
 
-    console.log('✅ Mensaje enviado');
+    console.log('💬 Enviando mensaje a Amojo:', url);
+
+    try {
+      const res = await axios.post(url, bodyString, {
+        headers,
+        transformRequest: (d: unknown) => d,
+      });
+
+      console.log('✅ Mensaje enviado a Amojo. Status:', res.status);
+    } catch (err) {
+      const error = err as AxiosError;
+      console.error(
+        '❌ Error enviando mensaje a Amojo:',
+        error.response?.data ?? error.message,
+      );
+      throw error;
+    }
   }
 
   async moverSegunClasificacion(
@@ -438,6 +498,7 @@ export class KommoService {
         console.log('🛑 El lead dejó de ser FRÍO → agregando STOP');
         await this.addStopTag(leadId);
       }
+
       if (textoFinal) {
         console.log('💬 Enviando MENSAJE DE TEXTO a Kommo:', textoFinal);
 
@@ -490,40 +551,6 @@ export class KommoService {
     } catch (error) {
       console.error('❌ Error en processAIMessage:', error);
       return { success: false, type: 'fatal' };
-    }
-  }
-
-  // 🤖 Enviar mensaje vía Salesbot a conversación activa
-  async sendViaSalesbot(
-    conversationId: string,
-    message: string,
-  ): Promise<void> {
-    const url = `${this.API_URL}/salesbot/send`;
-
-    const body = {
-      conversation_id: conversationId,
-      message: {
-        type: 'text',
-        text: message,
-      },
-    };
-
-    try {
-      const res = await axios.post(url, body, {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('✅ Mensaje enviado vía Salesbot:', res.data);
-    } catch (err) {
-      const error = err as AxiosError;
-      console.error(
-        '❌ Error al enviar mensaje vía Salesbot:',
-        error.response?.data ?? error.message,
-      );
-      throw error;
     }
   }
 
