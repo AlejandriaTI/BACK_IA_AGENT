@@ -64,6 +64,7 @@ export class KommoService {
   private readonly channelId = '0c407327-bf9e-48b4-ae84-bbc646f4ca4d';
   private readonly secret = 'fddada3260991dce2648c58f848824db1d2b452d';
   private readonly accountId = '80e096d0-da4d-425d-956e-9f51bd729816';
+  private readonly originUserId = '16e311b0-a810-4043-a53f-f2522608bef5';
 
   constructor(private readonly ollamaService: OllamaService) {
     this.baseUrl = `https://${process.env.KOMMO_SUBDOMAIN}.kommo.com`;
@@ -103,13 +104,12 @@ export class KommoService {
         msgid,
         conversation_id: conversationId,
         sender: {
-          id: 'my_int-XXXXXXXXXXXX', // ✔️ ORIGIN USER REAL
           name: 'Alexandria AI',
-          ref_id: '16e311b0-a810-4043-a53f-f2522608bef5', // <--- el ID del bot que Kommo generó
+          id: this.originUserId, // <--- EL CORRECTO
         },
         message: {
           type: 'text',
-          text: text.replace(/<[^>]*>?/gm, ''), // Limpiar HTML si viene
+          text: text.replace(/<[^>]*>?/gm, ''),
         },
       },
     };
