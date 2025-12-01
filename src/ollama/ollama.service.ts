@@ -530,7 +530,7 @@ export class OllamaService {
         await this.delay(3200);
       }
 
-      // 💾 Guardar conversación
+      // Guardar conversación
       const embeddingAsistente = await this.generarEmbedding(limpio);
       await this.guardarMensaje(sessionId, 'user', prompt, embeddingUsuario);
       await this.guardarMensaje(
