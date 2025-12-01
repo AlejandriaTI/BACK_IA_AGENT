@@ -28,7 +28,7 @@ export class OllamaController {
     @Body() body: { prompt: string },
     @UploadedFile() file: Express.Multer.File,
   ) {
-    const sessionId = obtenerSessionId(req); // 👈 usa la lógica del hash
+    const sessionId = obtenerSessionId(req); // usa la lógica del hash
     let textToSend = body?.prompt ?? '';
     let fileRecibido: { name: string; mimeType: string } | undefined;
 
@@ -59,7 +59,7 @@ export class OllamaController {
     }
 
     const response = await this.ollamaService.chat(
-      req, // 👈 pasamos todo el `req` ahora
+      req,
       textToSend,
       fileRecibido,
     );

@@ -5,7 +5,6 @@ import FormData from 'form-data';
 
 dotenv.config();
 
-// ✅ Interfaz tipada para la respuesta STT
 interface ElevenLabsSTTResponse {
   text: string;
 }
@@ -29,7 +28,6 @@ export class ElevenlabsService {
     }
   }
 
-  // ✅ TEXT → SPEECH con SSML (MUCHO más rápido)
   async textToSpeech(text: string): Promise<Buffer> {
     const url = `${this.apiUrl}/text-to-speech/${this.voiceId}`;
 
@@ -54,15 +52,14 @@ export class ElevenlabsService {
     return response.data as Buffer;
   }
 
-  // ✅ SPEECH → TEXT (corregido sin errores)
   async speechToText(audioBuffer: Buffer): Promise<string> {
     const url = `${this.apiUrl}/speech-to-text`;
 
     const form = new FormData();
 
     form.append('file', audioBuffer, {
-      filename: 'audio.input', // puede ser .opus, .mp3, .m4a, etc.
-      contentType: 'application/octet-stream', // ElevenLabs detecta solo
+      filename: 'audio.input',
+      contentType: 'application/octet-stream',
     });
 
     form.append('model_id', 'scribe_v1');

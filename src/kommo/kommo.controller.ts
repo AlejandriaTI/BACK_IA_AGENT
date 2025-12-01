@@ -54,7 +54,7 @@ export class KommoController {
         return { success: false, error: 'leadId faltante' };
       }
 
-      // 🟣 1. Obtener información del lead para conocer su pipeline real
+      // Obtener información del lead para conocer su pipeline real
       console.log(`🔍 Buscando lead ${leadId} en Kommo...`);
       const lead = await this.kommoService.getLeadById(leadId);
       console.log(
@@ -64,7 +64,7 @@ export class KommoController {
 
       const pipelineId = lead.pipeline_id;
 
-      // 🟣 2. Filtro por embudo PRUEBA
+      // Filtro por embudo PRUEBA
       const PIPELINE_PRUEBA_ID = PIPELINES.PRUEBA.ID;
       console.log(
         `⚙️ Pipeline ID del Lead: ${pipelineId} | Esperado: ${PIPELINE_PRUEBA_ID}`,
@@ -79,7 +79,6 @@ export class KommoController {
 
       const expectedScopeId = process.env.KOMMO_SCOPE_ID;
 
-      // ⚠️ Fix: Allow ':scope_id' literal which might come from misconfiguration, to avoid blocking.
       if (
         scopeId &&
         scopeId !== ':scope_id' &&
@@ -98,7 +97,7 @@ export class KommoController {
         );
       }
 
-      // 🧠 IA solo responde si pertenece al embudo PRUEBA
+      // IA solo responde si pertenece al embudo PRUEBA
       const result = await this.kommoService.processAIMessage(
         prompt,
         sessionId,

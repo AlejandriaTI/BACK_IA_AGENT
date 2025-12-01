@@ -11,7 +11,7 @@ import { KommoController } from './kommo.controller';
     ScheduleModule.forRoot(),
     forwardRef(() => OllamaModule),
   ],
-  controllers: [KommoController], // ✅ AQUÍ ESTÁ LA MAGIA
+  controllers: [KommoController],
   providers: [KommoService],
   exports: [KommoService],
 })

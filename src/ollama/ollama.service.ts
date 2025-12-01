@@ -242,11 +242,11 @@ export class OllamaService {
       prompt = reqOrPrompt;
       sessionId = promptOrSessionId;
     } else if ('sessionId' in reqOrPrompt) {
-      // 🔹 Llamado desde KOMMO
+      // Llamado desde KOMMO
       prompt = promptOrSessionId;
       sessionId = reqOrPrompt.sessionId;
     } else {
-      // 🔸 Llamado desde controller HTTP normal
+      // Llamado desde controller HTTP normal
       const req = reqOrPrompt;
       prompt = promptOrSessionId;
       sessionId = obtenerSessionId(req);
@@ -255,7 +255,7 @@ export class OllamaService {
     try {
       const normalized = prompt.toLowerCase().trim();
 
-      // 💬 Despedida
+      // Despedida
       if (/gracias|nos vemos|hasta luego/i.test(normalized)) {
         return {
           content:
@@ -263,10 +263,10 @@ export class OllamaService {
           registro: { tipo: 'despedida', fecha: Date.now(), prompt },
         };
       }
-      // 🔎 Derivación a Marketing: interés en aprender (sin contratar)
+      // Derivación a Marketing: interés en aprender (sin contratar)
       const embeddingUsuario = await this.generarEmbedding(normalized);
 
-      // ✅ Caso: el usuario quiere aprender (no contratar)
+      // Caso: el usuario quiere aprender (no contratar)
       if (REGEX_APRENDER.test(normalized)) {
         const mensajesEdu: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
           [
@@ -295,7 +295,7 @@ export class OllamaService {
           completionEdu.choices[0]?.message?.content || '',
         );
 
-        // ✅ Guardar respuesta en Supabase
+        // Guardar respuesta en Supabase
         await this.guardarMensaje(
           sessionId,
           'assistant',
@@ -355,27 +355,25 @@ export class OllamaService {
         };
       }
 
-      // 🧠 Embedding del mensaje actual
-
-      // 1️⃣ Recuperar historial de la sesión
+      // Recuperar historial de la sesión
       const { data: historial } = await supabase
         .from('chat_messages')
         .select('role, content')
         .eq('session_id', sessionId)
         .order('created_at', { ascending: true });
 
-      // 🔍 Verificar si ya se presentó Alejandria
+      // Verificar si ya se presentó Alejandria
       const yaSePresento = historial?.some(
         (m) =>
           m.content.includes('Soy Alejandria') ||
           m.content.includes('asesora académica del equipo Alejandría'),
       );
 
-      // 2️⃣ Buscar contexto semántico adicional
+      // Buscar contexto semántico adicional
       const contextoSemantico =
         await this.buscarContextoRelacionado(embeddingUsuario);
 
-      // 3️⃣ Crear contexto
+      // Crear contexto
       const mensajesPrevios: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
         (historial ?? []).map((m) => ({
           role: m.role,
@@ -423,7 +421,7 @@ export class OllamaService {
 
       const yaEnvioDocumento = datosCliente.yaEnvioDocumento;
 
-      // ✅ Solicitar documento APENAS detecta avance parcial
+      // Solicitar documento APENAS detecta avance parcial
       if (
         datosCliente.avance === 'parcial' &&
         !fileRecibido &&
@@ -441,7 +439,7 @@ export class OllamaService {
         };
       }
 
-      // ✅ Solicitar documento SI YA ESTÁ CALIFICADO y aún no lo envió
+      // Solicitar documento SI YA ESTÁ CALIFICADO y aún no lo envió
       if (
         isCalificado &&
         datosCliente.requiereDocumentoParaCotizar &&
@@ -460,11 +458,11 @@ export class OllamaService {
         };
       }
 
-      // ✅ Actualizar memoria: marcamos que ya envió archivo
+      // Actualizar memoria: marcamos que ya envió archivo
       datosCliente.yaEnvioDocumento = true;
       memoriaCliente.set(sessionId, datosCliente);
 
-      // ✅ Si se envió un documento
+      // Si se envió un documento
       if (fileRecibido) {
         if (!isCalificado) {
           return {
@@ -498,7 +496,7 @@ export class OllamaService {
         });
       }
 
-      // 4️⃣ Construir bloque de mensajes
+      // Construir bloque de mensajes
       const mensajes: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
         { role: 'system', content: this.systemPrompt },
         ...mensajesPrevios,
@@ -589,9 +587,8 @@ export class OllamaService {
         respuestaIA: limpio,
       };
 
-      // Si la respuesta es en auio,  formateamos para no devolver un buffer gigante en el webhook
-      // ✅ --- AUDIO PARA KOMMON (20% probabilidad) ---
-      const debeHablar = Math.random() < 0.0;
+      // AUDIO PARA KOMMON (20% probabilidad)
+      const debeHablar = Math.random() < 0.2;
 
       if (debeHablar) {
         console.log('🎤 Generando audio para Kommon...');
@@ -599,7 +596,6 @@ export class OllamaService {
         const audioBuffer = await this.elevenlabsService.textToSpeech(limpio);
         const base64Audio = audioBuffer.toString('base64');
 
-        // ✅ ESTE ES EL FORMATO CORRECTO SEGÚN TU TIPADO
         return {
           content: {
             isAudio: true,
@@ -611,9 +607,9 @@ export class OllamaService {
         };
       }
 
-      // ✅ --- TEXTO NORMAL ---
+      // --- TEXTO NORMAL ---
       return {
-        content: limpio, // ✅ devuelve string, tipo permitido
+        content: limpio,
         registro: registroCliente,
       };
     } catch (error) {

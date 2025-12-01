@@ -55,7 +55,7 @@ export class KommoService {
   private readonly KOMMO_DOMAIN = process.env.KOMMO_SUBDOMAIN;
   private readonly API_URL = `https://${this.KOMMO_DOMAIN}.kommo.com/api/v4`;
 
-  // 🔥 Token de larga duración (no expira por meses)
+  // Token de larga duración (no expira por meses)
   private readonly accessToken = process.env.KOMMO_KEY_DURATION;
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;

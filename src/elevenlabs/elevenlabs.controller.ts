@@ -18,7 +18,7 @@ export class ElevenlabsController {
   @Post('stt')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: multer.memoryStorage(), // ✅ TODO EN MEMORIA, SIN DISCO
+      storage: multer.memoryStorage(),
     }),
   )
   async speechToText(@UploadedFile() file: Express.Multer.File) {
@@ -29,7 +29,6 @@ export class ElevenlabsController {
     console.log('📥 Archivo recibido en memoria:', file.originalname);
     console.log('📦 Tamaño:', file.buffer.length, 'bytes');
 
-    // ✅ Le mandamos el Buffer directo
     const text = await this.elevenlabsService.speechToText(file.buffer);
 
     return {
@@ -48,7 +47,7 @@ export class ElevenlabsController {
         'Content-Disposition': 'inline; filename="speech.mp3"',
       });
 
-      res.send(audio); // 👈 envía el buffer como archivo de audio
+      res.send(audio);
     } catch (error) {
       console.error('Error al convertir texto a voz:', error);
       res.status(500).json({

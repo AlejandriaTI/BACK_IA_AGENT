@@ -10,7 +10,7 @@ export const PIPELINES = {
     ID: 12431132,
     FRIO: 96036300,
     TIBIO: 96036304,
-    MARKETING: 96036308, // opcional (cuando ya firmó)
-    COTIZACION: 96077016, // opcional (cuando ya firmó)
+    MARKETING: 96036308,
+    COTIZACION: 96077016,
   },
 };
